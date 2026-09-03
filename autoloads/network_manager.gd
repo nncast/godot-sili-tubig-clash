@@ -9,10 +9,17 @@ extends Node
 ## code with its own address, which the client then uses to open the real
 ## ENet connection. This only works on the same LAN/Wi-Fi (broadcasts don't
 ## cross routers) - there's no internet relay/matchmaking server behind this.
+##
+## Discovery is best-effort: some routers and phone hotspots drop broadcast
+## packets or isolate clients from one another. The host's LAN IP is always
+## shown in the lobby, and the join field accepts an IP address as a fallback
+## for those networks.
 
 const GAME_PORT: int = 7777
 const DISCOVERY_PORT: int = 7778
-const DISCOVERY_TIMEOUT: float = 4.0
+const DISCOVERY_TIMEOUT: float = 5.0
+const DISCOVERY_POLL_INTERVAL: float = 0.1
+const DISCOVERY_RESEND_INTERVAL: float = 0.4
 const MAX_PLAYERS: int = 10
 const ARENA_SCENE: String = "res://levels/multiplayer_arena.tscn"
 
@@ -23,11 +30,13 @@ signal server_disconnected
 signal match_starting
 signal lobby_code_ready(code: String)
 signal code_lookup_failed
+signal discovery_unavailable  # host couldn't open the discovery port
 
 var players: Dictionary = {}  # peer_id (int) -> display name (String)
 var roles: Dictionary = {}    # peer_id (int) -> "sili" or "tubig"
 var my_name: String = "Player"
 var lobby_code: String = ""
+var discovery_active: bool = false  # false => clients must join by IP
 
 var _discovery_socket: PacketPeerUDP = null
 var _is_discovery_host: bool = false
@@ -49,6 +58,7 @@ func _process(_delta: float) -> void:
 func host_game(player_name: String) -> Error:
 	my_name = player_name
 	var peer := ENetMultiplayerPeer.new()
+	# Binds on every interface, so phones on the same Wi-Fi/hotspot can reach us.
 	var err := peer.create_server(GAME_PORT, MAX_PLAYERS)
 	if err != OK:
 		return err
@@ -65,26 +75,52 @@ func host_game(player_name: String) -> Error:
 
 ## Broadcasts a "who has this code" request on the LAN and connects to
 ## whoever replies. Emits code_lookup_failed if nobody answers in time.
+##
+## The request is re-sent on a short interval because a single UDP broadcast is
+## routinely dropped on Wi-Fi, and it goes to each interface's subnet broadcast
+## address as well as 255.255.255.255 - Android hotspots and some routers
+## silently discard the limited broadcast address.
 func join_by_code(code: String, player_name: String) -> void:
 	my_name = player_name
-	var udp := PacketPeerUDP.new()
-	udp.set_broadcast_enabled(true)
-	udp.set_dest_address("255.255.255.255", DISCOVERY_PORT)
-	udp.put_packet(("SSMTTM_DISCOVER:%s" % code).to_utf8_buffer())
 
-	var elapsed := 0.0
-	var found_ip := ""
+	var udp := PacketPeerUDP.new()
+	# Binding explicitly (ephemeral port, all interfaces) guarantees the socket
+	# is open and listening before any reply can arrive. Relying on the implicit
+	# bind that put_packet() performs is unreliable across platforms.
+	var bind_err := udp.bind(0, "*")
+	if bind_err != OK:
+		push_warning("NetworkManager: could not bind discovery socket (%s)" % bind_err)
+		code_lookup_failed.emit()
+		return
+	udp.set_broadcast_enabled(true)
+
+	var targets := _broadcast_targets()
+	var request := ("SSMTTM_DISCOVER:%s" % code).to_utf8_buffer()
 	var expected_reply := "SSMTTM_HOST:%s" % code
 
+	var elapsed := 0.0
+	var since_send := DISCOVERY_RESEND_INTERVAL  # send immediately on first pass
+	var found_ip := ""
+
 	while elapsed < DISCOVERY_TIMEOUT:
-		if udp.get_available_packet_count() > 0:
+		if since_send >= DISCOVERY_RESEND_INTERVAL:
+			for target in targets:
+				udp.set_dest_address(target, DISCOVERY_PORT)
+				udp.put_packet(request)
+			since_send = 0.0
+
+		while udp.get_available_packet_count() > 0:
 			var raw := udp.get_packet()
-			var text := raw.get_string_from_utf8()
-			if text == expected_reply:
-				found_ip = udp.get_packet_ip()
+			var sender_ip := udp.get_packet_ip()
+			if raw.get_string_from_utf8() == expected_reply and sender_ip != "":
+				found_ip = sender_ip
 				break
-		await get_tree().create_timer(0.1).timeout
-		elapsed += 0.1
+		if found_ip != "":
+			break
+
+		await get_tree().create_timer(DISCOVERY_POLL_INTERVAL).timeout
+		elapsed += DISCOVERY_POLL_INTERVAL
+		since_send += DISCOVERY_POLL_INTERVAL
 
 	udp.close()
 
@@ -97,17 +133,40 @@ func join_by_code(code: String, player_name: String) -> void:
 		code_lookup_failed.emit()
 
 
+## Fallback for networks that block UDP broadcast (many phone hotspots, and
+## guest / AP-isolated Wi-Fi). The host reads its IP off the lobby screen.
+func join_by_ip(ip_address: String, player_name: String) -> void:
+	var err := _connect_to_ip(ip_address.strip_edges(), player_name)
+	if err != OK:
+		connection_failed.emit()
+
+
 func leave_game() -> void:
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
 	players.clear()
 	roles.clear()
+	lobby_code = ""
 	_stop_discovery_host()
 
 
 func is_host() -> bool:
 	return multiplayer.multiplayer_peer != null and multiplayer.is_server()
+
+
+## Best guess at the address other devices should type in. Prefers a private
+## LAN address and skips loopback, link-local and IPv6.
+func get_local_ip() -> String:
+	var fallback := ""
+	for address in IP.get_local_addresses():
+		if not _is_usable_ipv4(address):
+			continue
+		if address.begins_with("192.168.") or address.begins_with("10.") or address.begins_with("172."):
+			return address
+		if fallback == "":
+			fallback = address
+	return fallback
 
 
 ## Host-only. Randomly picks one connected peer to be Sili, everyone else Tubig,
@@ -133,6 +192,8 @@ func start_match() -> void:
 
 func _connect_to_ip(ip_address: String, player_name: String) -> Error:
 	my_name = player_name
+	if ip_address.is_empty():
+		return ERR_INVALID_PARAMETER
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(ip_address, GAME_PORT)
 	if err != OK:
@@ -146,11 +207,18 @@ func _connect_to_ip(ip_address: String, player_name: String) -> Error:
 func _start_discovery_host() -> void:
 	lobby_code = "%04d" % (randi() % 10000)
 	_discovery_socket = PacketPeerUDP.new()
-	var err := _discovery_socket.bind(DISCOVERY_PORT)
+	var err := _discovery_socket.bind(DISCOVERY_PORT, "*")
 	if err != OK:
+		# Usually another instance on this machine already owns the port. The
+		# lobby is still hostable - clients just have to join by IP instead.
+		push_warning("NetworkManager: discovery port %d unavailable (%s)" % [DISCOVERY_PORT, err])
 		_discovery_socket = null
+		discovery_active = false
+		lobby_code_ready.emit(lobby_code)
+		discovery_unavailable.emit()
 		return
 	_is_discovery_host = true
+	discovery_active = true
 	lobby_code_ready.emit(lobby_code)
 
 
@@ -159,23 +227,50 @@ func _stop_discovery_host() -> void:
 		_discovery_socket.close()
 		_discovery_socket = null
 	_is_discovery_host = false
+	discovery_active = false
 
 
 func _poll_discovery_requests() -> void:
 	while _discovery_socket.get_available_packet_count() > 0:
 		var raw := _discovery_socket.get_packet()
+		var sender_ip := _discovery_socket.get_packet_ip()
+		var sender_port := _discovery_socket.get_packet_port()
 		var text := raw.get_string_from_utf8()
 		if not text.begins_with("SSMTTM_DISCOVER:"):
 			continue
 
-		var requested_code := text.substr("SSMTTM_DISCOVER:".length())
+		var requested_code := text.substr("SSMTTM_DISCOVER:".length()).strip_edges()
 		if requested_code != lobby_code:
 			continue
+		if sender_ip == "" or sender_port <= 0:
+			continue
 
-		var sender_ip := _discovery_socket.get_packet_ip()
-		var sender_port := _discovery_socket.get_packet_port()
 		_discovery_socket.set_dest_address(sender_ip, sender_port)
 		_discovery_socket.put_packet(("SSMTTM_HOST:%s" % lobby_code).to_utf8_buffer())
+
+
+## 255.255.255.255 plus a /24 broadcast for each local interface, e.g.
+## 192.168.43.255 for a typical Android hotspot.
+func _broadcast_targets() -> Array[String]:
+	var targets: Array[String] = ["255.255.255.255"]
+	for address in IP.get_local_addresses():
+		if not _is_usable_ipv4(address):
+			continue
+		var parts := address.split(".")
+		if parts.size() != 4:
+			continue
+		var subnet_broadcast := "%s.%s.%s.255" % [parts[0], parts[1], parts[2]]
+		if not targets.has(subnet_broadcast):
+			targets.append(subnet_broadcast)
+	return targets
+
+
+func _is_usable_ipv4(address: String) -> bool:
+	if address.contains(":"):
+		return false  # IPv6
+	if address.begins_with("127.") or address.begins_with("169.254."):
+		return false  # loopback / link-local
+	return address.split(".").size() == 4
 
 
 # --- Peer lifecycle (host side) ---

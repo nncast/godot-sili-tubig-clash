@@ -27,6 +27,7 @@ func _ready() -> void:
 
 	join_confirm_button.pressed.connect(_on_join_confirm_pressed)
 	join_cancel_button.pressed.connect(_on_join_cancel_pressed)
+	code_edit.text_submitted.connect(func(_t: String) -> void: _on_join_confirm_pressed())
 
 	exit_confirm.confirmed.connect(_on_exit_confirmed)
 
@@ -38,7 +39,10 @@ func _ready() -> void:
 func _on_host_pressed() -> void:
 	var err := NetworkManager.host_game(_resolved_name())
 	if err != OK:
-		status_label.text = "Couldn't host (error %s)." % err
+		if err == ERR_ALREADY_IN_USE or err == ERR_CANT_CREATE:
+			status_label.text = "Port %d is already in use. Close any other copy of the game and try again." % NetworkManager.GAME_PORT
+		else:
+			status_label.text = "Couldn't host (error %s)." % err
 		return
 	get_tree().change_scene_to_file("res://ui/lobby/lobby.tscn")
 
@@ -46,6 +50,7 @@ func _on_host_pressed() -> void:
 func _on_join_pressed() -> void:
 	status_label.text = ""
 	join_panel.visible = true
+	code_edit.grab_focus()
 
 
 func _on_join_cancel_pressed() -> void:
@@ -53,15 +58,28 @@ func _on_join_cancel_pressed() -> void:
 	join_confirm_button.disabled = false
 
 
+## Accepts either a 4-digit lobby code (LAN broadcast lookup) or the host's IP
+## address, shown on the host's lobby screen. The IP path is the reliable one on
+## phone hotspots and guest Wi-Fi, where broadcast is often dropped.
 func _on_join_confirm_pressed() -> void:
-	var code := code_edit.text.strip_edges()
-	if code.length() != 4 or not code.is_valid_int():
-		status_label.text = "Enter the 4-digit lobby code."
+	if join_confirm_button.disabled:
 		return
 
-	status_label.text = "Looking for lobby %s..." % code
+	var entry := code_edit.text.strip_edges()
+
+	if _looks_like_ip(entry):
+		status_label.text = "Connecting to %s..." % entry
+		join_confirm_button.disabled = true
+		NetworkManager.join_by_ip(entry, _resolved_name())
+		return
+
+	if entry.length() != 4 or not entry.is_valid_int():
+		status_label.text = "Enter the 4-digit lobby code, or the host's IP address."
+		return
+
+	status_label.text = "Looking for lobby %s..." % entry
 	join_confirm_button.disabled = true
-	NetworkManager.join_by_code(code, _resolved_name())
+	NetworkManager.join_by_code(entry, _resolved_name())
 
 
 ## Fires once we're actually registered with the host - safe to move on.
@@ -71,13 +89,26 @@ func _on_player_list_changed() -> void:
 
 
 func _on_connection_failed() -> void:
-	status_label.text = "Connection failed."
+	status_label.text = "Couldn't reach the host. Check both devices are on the same Wi-Fi and that the host's firewall allows the game."
 	join_confirm_button.disabled = false
 
 
 func _on_code_lookup_failed() -> void:
-	status_label.text = "No lobby found with that code (same Wi-Fi/LAN only)."
+	status_label.text = "No lobby found with that code. If you're on a phone hotspot, type the host's IP address instead (shown on their lobby screen)."
 	join_confirm_button.disabled = false
+
+
+func _looks_like_ip(text: String) -> bool:
+	var parts := text.split(".")
+	if parts.size() != 4:
+		return false
+	for part in parts:
+		if part.is_empty() or not part.is_valid_int():
+			return false
+		var value := int(part)
+		if value < 0 or value > 255:
+			return false
+	return true
 
 
 func _on_settings_pressed() -> void:

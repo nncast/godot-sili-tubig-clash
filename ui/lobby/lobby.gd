@@ -10,6 +10,7 @@ extends Control
 func _ready() -> void:
 	NetworkManager.player_list_changed.connect(_refresh_player_list)
 	NetworkManager.lobby_code_ready.connect(_on_lobby_code_ready)
+	NetworkManager.discovery_unavailable.connect(_on_discovery_unavailable)
 	NetworkManager.server_disconnected.connect(_on_disconnected)
 
 	start_button.pressed.connect(_on_start_pressed)
@@ -18,7 +19,8 @@ func _ready() -> void:
 	status_label.text = ""
 
 	if NetworkManager.is_host():
-		code_label.text = "Lobby Code: %s" % NetworkManager.lobby_code
+		code_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_update_host_label()
 		start_button.visible = true
 	else:
 		code_label.text = "Joined lobby"
@@ -27,8 +29,27 @@ func _ready() -> void:
 	_refresh_player_list()
 
 
-func _on_lobby_code_ready(code: String) -> void:
-	code_label.text = "Lobby Code: %s" % code
+func _on_lobby_code_ready(_code: String) -> void:
+	_update_host_label()
+
+
+func _on_discovery_unavailable() -> void:
+	_update_host_label()
+	status_label.text = "Lobby codes are unavailable on this device - have players join by IP."
+
+
+## The IP is always shown: on phone hotspots and guest Wi-Fi the broadcast that
+## backs lobby codes is frequently dropped, and typing the IP always works.
+func _update_host_label() -> void:
+	var ip := NetworkManager.get_local_ip()
+	var lines: Array[String] = []
+	if NetworkManager.discovery_active:
+		lines.append("Lobby Code: %s" % NetworkManager.lobby_code)
+	if ip.is_empty():
+		lines.append("No network connection detected")
+	else:
+		lines.append("Or join by IP: %s" % ip if NetworkManager.discovery_active else "Join by IP: %s" % ip)
+	code_label.text = "\n".join(lines)
 
 
 func _refresh_player_list() -> void:

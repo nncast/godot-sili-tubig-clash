@@ -117,13 +117,13 @@ layout_mode = 2
 
 [node name="CodeLabel" type="Label" parent="JoinPanel/VBox" unique_id=934805568]
 layout_mode = 2
-text = "Enter 4-digit lobby code"
+text = "Enter lobby code or host IP"
 horizontal_alignment = 1
 
 [node name="CodeEdit" type="LineEdit" parent="JoinPanel/VBox" unique_id=1770047378]
 layout_mode = 2
-placeholder_text = "0000"
-max_length = 4
+placeholder_text = "0000 or 192.168.1.5"
+max_length = 39
 
 [node name="ButtonsRow" type="HBoxContainer" parent="JoinPanel/VBox" unique_id=1898757295]
 layout_mode = 2

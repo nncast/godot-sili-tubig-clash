@@ -3,25 +3,39 @@ extends Control
 @onready var name_edit: LineEdit = $VBox/NameRow/NameEdit
 @onready var host_button: Button = $VBox/HostButton
 @onready var join_button: Button = $VBox/JoinButton
+@onready var how_to_button: Button = $VBox/HowToButton
 @onready var settings_button: Button = $VBox/SettingsButton
 @onready var exit_button: Button = $VBox/ExitButton
 @onready var status_label: Label = $VBox/StatusLabel
 
-@onready var join_panel: PanelContainer = $JoinPanel
-@onready var code_edit: LineEdit = $JoinPanel/VBox/CodeEdit
-@onready var join_confirm_button: Button = $JoinPanel/VBox/ButtonsRow/JoinConfirmButton
-@onready var join_cancel_button: Button = $JoinPanel/VBox/ButtonsRow/JoinCancelButton
+## All three modals - join, how to play, exit - are now the same shape in the
+## scene: a full-rect Control holding a Dim plate and a centred PanelContainer.
+## The dim is a sibling of the panel INSIDE that Control, which is what makes
+## the whole thing show and hide as one node and stops clicks reaching the
+## title buttons underneath.
+@onready var join_panel: Control = $JoinPanel
+@onready var exit_panel: Control = $ExitPanel
 
-@onready var exit_confirm: ConfirmationDialog = $ExitConfirm
+@onready var code_edit: LineEdit = $JoinPanel/Panel/Margin/VBox/CodeEdit
+@onready var join_confirm_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinConfirmButton
+@onready var join_cancel_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinCancelButton
+
+@onready var how_to_panel: Control = $HowToPanel
+@onready var how_to_body: RichTextLabel = $HowToPanel/Panel/Margin/VBox/Body
+@onready var how_to_close_button: Button = $HowToPanel/Panel/Margin/VBox/CloseButton
 
 
 func _ready() -> void:
 	AudioManager.play_title_music()
 	join_panel.visible = false
+	how_to_panel.visible = false
+	exit_panel.visible = false
 	status_label.text = ""
 
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
+	how_to_button.pressed.connect(_on_how_to_pressed)
+	how_to_close_button.pressed.connect(_on_how_to_close_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
 
@@ -29,7 +43,8 @@ func _ready() -> void:
 	join_cancel_button.pressed.connect(_on_join_cancel_pressed)
 	code_edit.text_submitted.connect(func(_t: String) -> void: _on_join_confirm_pressed())
 
-	exit_confirm.confirmed.connect(_on_exit_confirmed)
+	$ExitPanel/Panel/Margin/VBox/ButtonsRow/ExitConfirmButton.pressed.connect(_on_exit_confirmed)
+	$ExitPanel/Panel/Margin/VBox/ButtonsRow/ExitCancelButton.pressed.connect(_on_exit_cancel_pressed)
 
 	NetworkManager.player_list_changed.connect(_on_player_list_changed)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
@@ -48,13 +63,17 @@ func _on_host_pressed() -> void:
 
 
 func _on_join_pressed() -> void:
+	_close_all_panels()
 	status_label.text = ""
 	join_panel.visible = true
+	code_edit.text = ""
 	code_edit.grab_focus()
+	join_confirm_button.disabled = false
 
 
 func _on_join_cancel_pressed() -> void:
 	join_panel.visible = false
+	join_button.grab_focus()
 	join_confirm_button.disabled = false
 
 
@@ -111,18 +130,65 @@ func _looks_like_ip(text: String) -> bool:
 	return true
 
 
-func _on_settings_pressed() -> void:
-	get_tree().change_scene_to_file("res://ui/settings/settings.tscn")
+## The rules overlay. Closing the join prompt first means the two panels can
+## never end up stacked on top of each other.
+func _on_how_to_pressed() -> void:
+	_close_all_panels()
+	status_label.text = ""
+	how_to_panel.visible = true
+	# Reopening always starts at the top rather than wherever the last reader
+	# left the scroll.
+	how_to_body.scroll_to_line(0)
+	how_to_close_button.grab_focus()
+
+
+func _on_how_to_close_pressed() -> void:
+	how_to_panel.visible = false
+	how_to_button.grab_focus()
 
 
 func _on_exit_pressed() -> void:
-	exit_confirm.popup_centered()
+	_close_all_panels()
+	exit_panel.visible = true
+
+
+func _on_exit_cancel_pressed() -> void:
+	exit_panel.visible = false
+	exit_button.grab_focus()
 
 
 func _on_exit_confirmed() -> void:
 	get_tree().quit()
 
 
+## Escape closes any open overlay instead of falling through to anything else.
+## The event is swallowed so it can't also reach other dialogs.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	
+	if how_to_panel.visible:
+		_on_how_to_close_pressed()
+		get_viewport().set_input_as_handled()
+	elif join_panel.visible:
+		_on_join_cancel_pressed()
+		get_viewport().set_input_as_handled()
+	elif exit_panel.visible:
+		_on_exit_cancel_pressed()
+		get_viewport().set_input_as_handled()
+
+
+func _on_settings_pressed() -> void:
+	get_tree().change_scene_to_file("res://ui/settings/settings.tscn")
+
+
 func _resolved_name() -> String:
 	var typed := name_edit.text.strip_edges()
 	return typed if not typed.is_empty() else "Player%d" % (randi() % 1000)
+
+
+## Helper to close all panels at once
+func _close_all_panels() -> void:
+	join_panel.visible = false
+	how_to_panel.visible = false
+	exit_panel.visible = false

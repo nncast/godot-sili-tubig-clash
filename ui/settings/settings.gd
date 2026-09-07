@@ -1,9 +1,9 @@
 extends Control
 
-@onready var master_slider: HSlider = $VBox/MasterRow/MasterSlider
-@onready var music_slider: HSlider = $VBox/MusicRow/MusicSlider
-@onready var sfx_slider: HSlider = $VBox/SFXRow/SFXSlider
-@onready var ambience_slider: HSlider = $VBox/AmbienceRow/AmbienceSlider
+@onready var master_slider: HSlider = $Panel/VBox/MasterRow/MasterSlider
+@onready var music_slider: HSlider = $Panel/VBox/MusicRow/MusicSlider
+@onready var sfx_slider: HSlider = $Panel/VBox/SFXRow/SFXSlider
+@onready var ambience_slider: HSlider = $Panel/VBox/AmbienceRow/AmbienceSlider
 @onready var back_button: Button = $BackButton
 
 

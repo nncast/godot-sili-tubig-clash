@@ -1,0 +1,228 @@
+extends Node
+
+## Autoload singleton. Turns a pile of one-off matches into a tournament set.
+##
+## A SERIES is one round per player: with five in the lobby you play five
+## rounds, and every player is the Sili in exactly one of them. That is the
+## whole reason this exists. Picking the Sili at random - which is what the
+## lobby used to do - means one player can be hunted four rounds running while
+## another never holds the knife, and no result taken from that is worth
+## comparing. Rotation makes every scoreline mean the same thing for everyone.
+##
+## The server owns all of it. Clients receive the standings through
+## _rpc_sync_state and never compute a point themselves.
+
+## --- Scoring -----------------------------------------------------------
+## Both roles have to be worth playing well, so both can score, and the
+## ceilings are deliberately close: a perfect Sili round is 11, a perfect
+## Tubig round is 3 survival + up to 4 rescues. Nobody wins a series on the
+## strength of one lucky draw.
+const POINTS_PER_ELIMINATION := 2  # Sili, per Tubig who ends the round out
+const POINTS_FULL_WIPE := 3        # Sili, for clearing every Tubig
+const POINTS_SURVIVED := 3         # Tubig, for not being out when time expires
+const POINTS_PER_RESCUE := 1       # Tubig, per rescue channel completed
+
+signal standings_changed
+signal series_finished
+signal round_recorded(summary: Dictionary)
+
+## peer_id -> {
+##   "name": String, "points": int, "eliminations": int,
+##   "rescues": int, "survivals": int, "wipes": int, "sili_rounds": int }
+var scores: Dictionary = {}
+
+## Peer ids in the order they take the Sili role. Fixed when the series opens
+## so the running order is knowable in advance, the way a bracket is.
+var rotation: Array = []
+var round_index: int = 0
+var is_active: bool = false
+
+## Rescues completed in the CURRENT round only, peer_id -> count. Server-side;
+## folded into `scores` when the round is recorded and then cleared.
+var _round_rescues: Dictionary = {}
+
+
+func rounds_total() -> int:
+	return rotation.size()
+
+
+func round_number() -> int:
+	return round_index + 1
+
+
+func is_final_round() -> bool:
+	return round_index >= rotation.size() - 1
+
+
+## Who is the Sili this round. Returns 0 before a series has been opened.
+func current_sili() -> int:
+	if rotation.is_empty():
+		return 0
+	return rotation[round_index % rotation.size()]
+
+
+## Host only. Fixes the running order and zeroes the table. The order itself is
+## shuffled - rotation guarantees everyone gets a turn, it does not have to
+## guarantee whose turn is first.
+func begin_series(players: Dictionary) -> void:
+	rotation = players.keys()
+	rotation.shuffle()
+	round_index = 0
+	is_active = true
+	_round_rescues.clear()
+
+	scores.clear()
+	for peer_id in rotation:
+		scores[peer_id] = {
+			"name": players[peer_id],
+			"points": 0,
+			"eliminations": 0,
+			"rescues": 0,
+			"survivals": 0,
+			"wipes": 0,
+			"sili_rounds": 0,
+		}
+	_broadcast_state()
+
+
+func end_series() -> void:
+	is_active = false
+	rotation.clear()
+	round_index = 0
+	scores.clear()
+	_round_rescues.clear()
+	_broadcast_state()
+
+
+## Called by HeatStatus on the server the moment a rescue channel actually
+## completes and passes validation - so the tally counts rescues that landed,
+## not rescues that were attempted or claimed.
+func credit_rescue(peer_id: int) -> void:
+	if not is_active:
+		return
+	_round_rescues[peer_id] = int(_round_rescues.get(peer_id, 0)) + 1
+
+
+## Host only, called once from the arena when the match ends.
+## `outcomes` is peer_id -> "survived" | "out", covering the Tubig only.
+func record_round(sili_id: int, outcomes: Dictionary) -> void:
+	if not is_active:
+		return
+
+	var eliminated := 0
+	for peer_id in outcomes:
+		if outcomes[peer_id] == "out":
+			eliminated += 1
+
+	var wipe: bool = eliminated > 0 and eliminated == outcomes.size()
+
+	var summary := {
+		"round": round_number(),
+		"sili_id": sili_id,
+		"eliminated": eliminated,
+		"tubig_total": outcomes.size(),
+		"wipe": wipe,
+		"awards": {},  # peer_id -> points earned THIS round, for the recap
+	}
+
+	# --- Sili ---
+	var sili_points := eliminated * POINTS_PER_ELIMINATION
+	if wipe:
+		sili_points += POINTS_FULL_WIPE
+	_award(sili_id, sili_points, summary)
+	if scores.has(sili_id):
+		scores[sili_id]["eliminations"] += eliminated
+		scores[sili_id]["sili_rounds"] += 1
+		if wipe:
+			scores[sili_id]["wipes"] += 1
+
+	# --- Tubig ---
+	for peer_id in outcomes:
+		var points := 0
+		if outcomes[peer_id] == "survived":
+			points += POINTS_SURVIVED
+			if scores.has(peer_id):
+				scores[peer_id]["survivals"] += 1
+		var rescues := int(_round_rescues.get(peer_id, 0))
+		if rescues > 0:
+			points += rescues * POINTS_PER_RESCUE
+			if scores.has(peer_id):
+				scores[peer_id]["rescues"] += rescues
+		_award(peer_id, points, summary)
+
+	_round_rescues.clear()
+	round_index += 1
+
+	_broadcast_round(summary)
+	_broadcast_state()
+
+
+func _award(peer_id: int, points: int, summary: Dictionary) -> void:
+	if not scores.has(peer_id):
+		return
+	scores[peer_id]["points"] += points
+	summary["awards"][peer_id] = points
+
+
+## Highest points first. Ties break on eliminations, then survivals, then name,
+## so the board has a stable order instead of reshuffling every refresh.
+func standings() -> Array:
+	var rows: Array = []
+	for peer_id in scores:
+		var row: Dictionary = scores[peer_id].duplicate()
+		row["peer_id"] = peer_id
+		rows.append(row)
+	rows.sort_custom(func(a, b):
+		if a["points"] != b["points"]:
+			return a["points"] > b["points"]
+		if a["eliminations"] != b["eliminations"]:
+			return a["eliminations"] > b["eliminations"]
+		if a["survivals"] != b["survivals"]:
+			return a["survivals"] > b["survivals"]
+		return String(a["name"]) < String(b["name"]))
+	return rows
+
+
+func series_complete() -> bool:
+	return is_active and round_index >= rotation.size()
+
+
+# --- Replication -------------------------------------------------------
+
+func _broadcast_state() -> void:
+	if _is_networked():
+		_rpc_sync_state.rpc(scores, rotation, round_index, is_active)
+	else:
+		_rpc_sync_state(scores, rotation, round_index, is_active)
+
+
+func _broadcast_round(summary: Dictionary) -> void:
+	if _is_networked():
+		_rpc_round_recorded.rpc(summary)
+	else:
+		_rpc_round_recorded(summary)
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_sync_state(new_scores: Dictionary, new_rotation: Array,
+		new_round_index: int, active: bool) -> void:
+	scores = new_scores
+	rotation = new_rotation
+	round_index = new_round_index
+	is_active = active
+	standings_changed.emit()
+	if series_complete():
+		series_finished.emit()
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_round_recorded(summary: Dictionary) -> void:
+	round_recorded.emit(summary)
+
+
+## The null check is not paranoia: an autoload reached before it is inside a
+## SceneTree - which is what happens under `godot --script`, and can happen
+## during early shutdown - has no multiplayer API at all. Scoring is pure
+## logic and should not fall over because of where it was called from.
+func _is_networked() -> bool:
+	return multiplayer != null and multiplayer.has_multiplayer_peer()

@@ -20,8 +20,23 @@ const DISCOVERY_PORT: int = 7778
 const DISCOVERY_TIMEOUT: float = 5.0
 const DISCOVERY_POLL_INTERVAL: float = 0.1
 const DISCOVERY_RESEND_INTERVAL: float = 0.4
-const MAX_PLAYERS: int = 10
-const ARENA_SCENE: String = "res://levels/multiplayer_arena.tscn"
+## A match is 4 Tubig against 1 Sili. The clock, the Sili's speed ramp and the
+## rescue economy are all tuned against four runners, so this is a rule and not
+## a suggestion - the lobby refuses to start a competitive series at any other
+## size. The ENet cap below stops a sixth player from even connecting and
+## sitting there watching.
+const MATCH_SIZE: int = 5
+## ENet counts CLIENTS, not total players - the host is peer 1 and is not a
+## client of itself, so this is one less than MATCH_SIZE.
+const MAX_CLIENTS: int = MATCH_SIZE - 1
+## Practice matches are allowed to be short-handed so the team can test with
+## two machines. They never open a series, so they cannot pollute the standings.
+const MIN_PRACTICE_PLAYERS: int = 2
+const ARENA_SCENE: String = "res://game/arena/arena.tscn"
+## Which level the next round loads. Set by the host and pushed to every peer
+## with the load command, never chosen locally - two peers on different maps
+## would each be playing a game the other cannot see.
+var current_map_id: String = MapRegistry.DEFAULT_MAP
 
 signal player_list_changed
 signal roles_assigned
@@ -59,7 +74,7 @@ func host_game(player_name: String) -> Error:
 	my_name = player_name
 	var peer := ENetMultiplayerPeer.new()
 	# Binds on every interface, so phones on the same Wi-Fi/hotspot can reach us.
-	var err := peer.create_server(GAME_PORT, MAX_PLAYERS)
+	var err := peer.create_server(GAME_PORT, MAX_CLIENTS)
 	if err != OK:
 		return err
 
@@ -169,23 +184,46 @@ func get_local_ip() -> String:
 	return fallback
 
 
-## Host-only. Randomly picks one connected peer to be Sili, everyone else Tubig,
-## then tells every peer to load the arena scene.
-func start_match() -> void:
-	if not is_host() or players.size() < 2:
+## Host-only. Opens a fresh series (one round per player, everyone takes a turn
+## as Sili) and starts round 1. Refuses at any size other than MATCH_SIZE -
+## use start_practice_match() for short-handed testing.
+func start_series() -> void:
+	if not is_host() or players.size() != MATCH_SIZE:
 		return
+	SeriesManager.begin_series(players)
+	_launch_round(SeriesManager.current_sili())
 
+
+## Host-only. Loads the next round of the series with the next player in the
+## rotation as Sili. Called by the end-of-match overlay's "Next Round" button.
+func start_next_round() -> void:
+	if not is_host() or not SeriesManager.is_active:
+		return
+	if SeriesManager.series_complete():
+		return
+	_launch_round(SeriesManager.current_sili())
+
+
+## Host-only. An unranked one-off at any size from 2 up, for testing and for
+## letting spectators try the game between sets. Picks the Sili at random
+## because there is no rotation to honour outside a series.
+func start_practice_match() -> void:
+	if not is_host() or players.size() < MIN_PRACTICE_PLAYERS:
+		return
+	SeriesManager.end_series()
 	var peer_ids := players.keys()
 	peer_ids.shuffle()
-	var sili_id: int = peer_ids[0]
+	_launch_round(peer_ids[0])
 
+
+func _launch_round(sili_id: int) -> void:
 	roles.clear()
-	for id in peer_ids:
+	for id in players.keys():
 		roles[id] = "sili" if id == sili_id else "tubig"
 
 	_stop_discovery_host()  # match is starting, stop advertising the lobby
 	_rpc_assign_roles.rpc(roles)
-	_rpc_load_arena.rpc()
+	_rpc_load_arena.rpc(current_map_id)
 
 
 # --- Direct connection (used internally once a code resolves to an IP) ---
@@ -329,6 +367,7 @@ func _rpc_assign_roles(new_roles: Dictionary) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _rpc_load_arena() -> void:
+func _rpc_load_arena(map_id: String) -> void:
+	current_map_id = map_id
 	match_starting.emit()
 	get_tree().change_scene_to_file(ARENA_SCENE)

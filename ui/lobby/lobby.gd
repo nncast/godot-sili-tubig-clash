@@ -1,10 +1,33 @@
 extends Control
 
-@onready var code_label: Label = $VBox/CodeLabel
-@onready var player_list: ItemList = $VBox/PlayerList
-@onready var start_button: Button = $VBox/StartButton
-@onready var leave_button: Button = $VBox/LeaveButton
-@onready var status_label: Label = $VBox/StatusLabel
+## Status-line colours. These change with lobby STATE, so they are feedback
+## rather than styling and cannot live in the theme. Everything else about this
+## screen's appearance comes from ui/theme/ui_theme.tres and the scene file.
+const READY_COLOR := Color(1.0, 0.824, 0.498)
+const WAITING_COLOR := Color(0.62, 0.58, 0.55)
+
+## Pre-match lobby.
+##
+## Two ways out of here, and the difference matters:
+##
+##   Start Series   - the competitive mode. Requires exactly
+##                    NetworkManager.MATCH_SIZE players because the match is
+##                    balanced for 4v1 and nothing else. Opens a rotation
+##                    where every player is the Sili once, and keeps a
+##                    running score across the set.
+##   Practice Match - unranked, any size from 2 up, random Sili. For testing
+##                    and for letting people try the game between sets. It
+##                    clears any series in progress rather than scoring into
+##                    it, so a casual round can't touch the standings.
+
+@onready var panel: PanelContainer = $Panel
+@onready var title_label: Label = $Panel/Margin/VBox/Title
+@onready var code_label: Label = $Panel/Margin/VBox/CodeLabel
+@onready var player_list: ItemList = $Panel/Margin/VBox/PlayerList
+@onready var start_button: Button = $Panel/Margin/VBox/StartButton
+@onready var practice_button: Button = $Panel/Margin/VBox/ButtonRow/PracticeButton
+@onready var leave_button: Button = $Panel/Margin/VBox/ButtonRow/LeaveButton
+@onready var status_label: Label = $Panel/Margin/VBox/StatusLabel
 
 
 func _ready() -> void:
@@ -14,17 +37,19 @@ func _ready() -> void:
 	NetworkManager.server_disconnected.connect(_on_disconnected)
 
 	start_button.pressed.connect(_on_start_pressed)
+	practice_button.pressed.connect(_on_practice_pressed)
 	leave_button.pressed.connect(_on_leave_pressed)
 
 	status_label.text = ""
 
 	if NetworkManager.is_host():
-		code_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_update_host_label()
 		start_button.visible = true
+		practice_button.visible = true
 	else:
 		code_label.text = "Joined lobby"
 		start_button.visible = false
+		practice_button.visible = false
 
 	_refresh_player_list()
 
@@ -35,7 +60,7 @@ func _on_lobby_code_ready(_code: String) -> void:
 
 func _on_discovery_unavailable() -> void:
 	_update_host_label()
-	status_label.text = "Lobby codes are unavailable on this device - have players join by IP."
+	status_label.text = "Lobby codes unavailable - join by IP."
 
 
 ## The IP is always shown: on phone hotspots and guest Wi-Fi the broadcast that
@@ -54,19 +79,53 @@ func _update_host_label() -> void:
 
 func _refresh_player_list() -> void:
 	player_list.clear()
+
+	var count := NetworkManager.players.size()
+	var needed := NetworkManager.MATCH_SIZE
+
 	for id in NetworkManager.players.keys():
 		var suffix := " (host)" if id == 1 else ""
 		player_list.add_item(str(NetworkManager.players[id]) + suffix)
 
-	if NetworkManager.is_host():
-		start_button.disabled = NetworkManager.players.size() < 2
+	# Empty seats are drawn rather than left blank, so the host sees at a
+	# glance how many people are still missing instead of counting names.
+	for i in range(count, needed):
+		var idx := player_list.add_item("- waiting for player %d -" % (i + 1))
+		player_list.set_item_disabled(idx, true)
+		player_list.set_item_custom_fg_color(idx, Color(0.55, 0.55, 0.58))
+
+	if not NetworkManager.is_host():
+		status_label.text = "Waiting for the host..."
+		return
+
+	var ready_to_start: bool = count == needed
+	start_button.disabled = not ready_to_start
+	start_button.text = "Start Series  %d/%d" % [count, needed]
+	practice_button.disabled = count < NetworkManager.MIN_PRACTICE_PLAYERS
+
+	# One short line. The reasoning behind the player count and the two modes
+	# lives in the button tooltips, so the panel does not have to explain the
+	# rules of the game every time somebody opens it.
+	if ready_to_start:
+		status_label.text = "Ready - %d rounds." % needed
+		status_label.add_theme_color_override("font_color", READY_COLOR)
+	else:
+		status_label.text = "Waiting for %d more..." % (needed - count)
+		status_label.add_theme_color_override("font_color", WAITING_COLOR)
 
 
 func _on_start_pressed() -> void:
-	if NetworkManager.players.size() < 2:
-		status_label.text = "Need at least 2 players to start."
+	if NetworkManager.players.size() != NetworkManager.MATCH_SIZE:
+		status_label.text = "Need exactly %d players." % NetworkManager.MATCH_SIZE
 		return
-	NetworkManager.start_match()
+	NetworkManager.start_series()
+
+
+func _on_practice_pressed() -> void:
+	if NetworkManager.players.size() < NetworkManager.MIN_PRACTICE_PLAYERS:
+		status_label.text = "Need at least %d players." % NetworkManager.MIN_PRACTICE_PLAYERS
+		return
+	NetworkManager.start_practice_match()
 
 
 func _on_leave_pressed() -> void:

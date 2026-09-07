@@ -15,11 +15,40 @@ extends Node
 ## the moment it enters the tree, anywhere in the game. Add a node to the
 ## "silent_ui" group to opt it out.
 
-const MUSIC_TITLE: AudioStream = preload("res://assets/audio/music/Music_Title.ogg")
-const MUSIC_INGAME: AudioStream = preload("res://assets/audio/music/Music_Ingame.ogg")
-const SFX_UI_HOVER: AudioStream = preload("res://assets/audio/ui/ui_hover.wav")
-const SFX_UI_CLICK: AudioStream = preload("res://assets/audio/ui/ui_click.wav")
-const AMBIENCE_OCEAN := "res://assets/audio/ambiance/Ambiance_Ocean_Praia_dos_Moinhos_Loop_Stereo_02.wav"
+const MUSIC_TITLE: AudioStream = preload("res://game/assets/audio/music/Music_Title.ogg")
+const MUSIC_INGAME: AudioStream = preload("res://game/assets/audio/music/Music_Ingame.ogg")
+const SFX_UI_HOVER: AudioStream = preload("res://game/assets/audio/ui/ui_hover.wav")
+const SFX_UI_CLICK: AudioStream = preload("res://game/assets/audio/ui/ui_click.wav")
+const AMBIENCE_OCEAN := "res://game/assets/audio/ambiance/Ambiance_Ocean_Praia_dos_Moinhos_Loop_Stereo_02.wav"
+
+## Gameplay sound effects, all synthesised by tools/generate_audio.py.
+## Loaded by name rather than preloaded individually so call sites read as
+## AudioManager.play_sfx("tag") instead of threading a constant through three
+## scripts. Anything missing from disk simply doesn't play - the game should
+## never crash over a sound.
+const SFX_DIR := "res://game/assets/audio/sfx"
+const SFX_NAMES: Array[String] = [
+	"tag", "burn_tick", "rescue_start", "rescue_complete", "tunnel",
+	"countdown", "countdown_go", "match_win", "match_lose",
+	"eliminated", "spotted",
+]
+
+## Per-sound trim, because a fanfare and a footstep-adjacent tick should not
+## arrive at the same level. Anything unlisted plays at 0 dB.
+const SFX_DB := {
+	"burn_tick": -10.0,
+	"countdown": -4.0,
+	"rescue_start": -8.0,
+	"spotted": -5.0,
+	"tunnel": -3.0,
+}
+
+## Voices for non-positional (2D-UI-style) effects, round-robined like the UI
+## pool so a tag landing under a countdown beep doesn't cut it off.
+const SFX_VOICES := 6
+## World-space one-shots free themselves when finished, but a chase can throw a
+## lot of them at once; this caps how many can be alive at a time.
+const MAX_POSITIONAL_SFX := 12
 
 const CROSSFADE_TIME := 1.2
 ## Music sits well under the game now - background texture, not a score.
@@ -46,6 +75,15 @@ var _ui_voices: Array[AudioStreamPlayer] = []
 var _ui_voice_index := 0
 var _last_hover_at := -1.0
 var _ambience_preview: AudioStreamPlayer
+## Menu-side ocean loop. Separate from the in-match ambience, which
+## surface_audio.gd fades in and out by how close a player is to the shoreline
+## - out here there is no player and no shoreline, so it just runs.
+var _menu_ambience: AudioStreamPlayer
+
+var _sfx: Dictionary = {}  # name -> AudioStream
+var _sfx_voices: Array[AudioStreamPlayer] = []
+var _sfx_voice_index := 0
+var _positional_count := 0
 
 
 func _ready() -> void:
@@ -62,6 +100,14 @@ func _ready() -> void:
 		add_child(voice)
 		_ui_voices.append(voice)
 
+	_load_sfx()
+	for i in SFX_VOICES:
+		var sfx_voice := AudioStreamPlayer.new()
+		sfx_voice.name = "SFXVoice%d" % i
+		sfx_voice.bus = "SFX"
+		add_child(sfx_voice)
+		_sfx_voices.append(sfx_voice)
+
 	# Boost the SFX bus for all non-music sounds (footsteps, ambience, etc.)
 	_boost_sfx_bus()
 
@@ -72,6 +118,8 @@ func _ready() -> void:
 
 	MatchManager.match_started.connect(_on_match_started)
 	MatchManager.match_ended.connect(_on_match_ended)
+	MatchManager.pregame_tick.connect(_on_pregame_tick)
+	MatchManager.pregame_finished.connect(_on_pregame_finished)
 
 	play_title_music()
 
@@ -100,11 +148,19 @@ func _boost_sfx_bus() -> void:
 
 # --- Music ------------------------------------------------------------------
 
+## Title, lobby and settings. Music plus the ocean underneath it - the game is
+## set on a beach, and starting the surf here rather than at the first match
+## means the setting is established before the player has done anything.
 func play_title_music() -> void:
 	_crossfade_to(MUSIC_TITLE)
+	start_menu_ambience()
 
 
+## Handed over to surface_audio.gd once a match starts: in the arena the ocean
+## has a position, and it should get louder as you approach the water rather
+## than sitting flat under everything.
 func play_game_music() -> void:
+	stop_menu_ambience()
 	_crossfade_to(MUSIC_INGAME)
 
 
@@ -154,8 +210,24 @@ func _on_match_started() -> void:
 	play_game_music()
 
 
-func _on_match_ended(_sili_won: bool) -> void:
+## The verdict is per-player: the same result is a win on one screen and a loss
+## on the next, so this asks which side the local player is on rather than
+## playing one stinger for everybody.
+func _on_match_ended(sili_won: bool) -> void:
+	var my_id := multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1
+	var my_role: String = NetworkManager.roles.get(my_id, "tubig")
+	var i_won: bool = my_role == ("sili" if sili_won else "tubig")
+	play_sfx("match_win" if i_won else "match_lose")
 	play_title_music()
+
+
+func _on_pregame_tick(seconds_left: int) -> void:
+	if seconds_left > 0:
+		play_sfx("countdown")
+
+
+func _on_pregame_finished() -> void:
+	play_sfx("countdown_go")
 
 
 # --- UI blips ---------------------------------------------------------------
@@ -181,6 +253,63 @@ func _play_ui(stream: AudioStream, volume_db: float) -> void:
 	_ui_voice_index = (_ui_voice_index + 1) % _ui_voices.size()
 	voice.stream = stream
 	voice.volume_db = volume_db
+	voice.play()
+
+
+# --- Gameplay SFX -----------------------------------------------------------
+
+func _load_sfx() -> void:
+	for sfx_name in SFX_NAMES:
+		var path := "%s/%s.wav" % [SFX_DIR, sfx_name]
+		if ResourceLoader.exists(path):
+			_sfx[sfx_name] = load(path)
+		else:
+			push_warning("AudioManager: missing sfx '%s' - run tools/generate_audio.py" % sfx_name)
+
+
+## Non-positional. Use for things that happened TO the person at this screen -
+## their own countdown, their own elimination, the final verdict - where the
+## sound is about them and not about a place on the map.
+func play_sfx(sfx_name: String, extra_db: float = 0.0) -> void:
+	if not _sfx.has(sfx_name) or _sfx_voices.is_empty():
+		return
+	var voice := _sfx_voices[_sfx_voice_index]
+	_sfx_voice_index = (_sfx_voice_index + 1) % _sfx_voices.size()
+	voice.stream = _sfx[sfx_name]
+	voice.volume_db = float(SFX_DB.get(sfx_name, 0.0)) + extra_db
+	voice.play()
+
+
+## World-space. Use for anything a bystander should be able to LOCATE - a tag
+## landing across the plaza, someone dropping into a tunnel behind you. In a
+## game about working out where people are, most gameplay sound belongs here
+## rather than flat in both ears.
+func play_sfx_at(sfx_name: String, world_position: Vector2, extra_db: float = 0.0) -> void:
+	if not _sfx.has(sfx_name):
+		return
+	if _positional_count >= MAX_POSITIONAL_SFX:
+		return
+
+	var tree := get_tree()
+	if tree == null or tree.current_scene == null:
+		play_sfx(sfx_name, extra_db)  # no world to place it in; better flat than silent
+		return
+
+	var voice := AudioStreamPlayer2D.new()
+	voice.stream = _sfx[sfx_name]
+	voice.bus = "SFX"
+	voice.global_position = world_position
+	voice.volume_db = float(SFX_DB.get(sfx_name, 0.0)) + extra_db
+	# Roughly the footstep envelope: audible across a courtyard, gone across
+	# the map, so sound stays a local clue rather than a global announcement.
+	voice.max_distance = 520.0
+	voice.attenuation = 1.6
+	tree.current_scene.add_child(voice)
+
+	_positional_count += 1
+	voice.finished.connect(func():
+		_positional_count = max(0, _positional_count - 1)
+		voice.queue_free())
 	voice.play()
 
 
@@ -253,3 +382,33 @@ func _wire_button(node: Node) -> void:
 		button.mouse_entered.connect(play_ui_hover)
 	if not button.pressed.is_connected(play_ui_click):
 		button.pressed.connect(play_ui_click)
+
+
+## --- Menu ambience -------------------------------------------------------
+
+func start_menu_ambience() -> void:
+	if not ResourceLoader.exists(AMBIENCE_OCEAN):
+		return
+	if _menu_ambience == null:
+		_menu_ambience = AudioStreamPlayer.new()
+		_menu_ambience.name = "MenuAmbience"
+		_menu_ambience.bus = "Ambience"
+		add_child(_menu_ambience)
+
+	var stream: AudioStream = load(AMBIENCE_OCEAN)
+	# The file is a loop, but the importer does not always mark it as one - so
+	# say it explicitly rather than letting the surf stop dead after 30s on the
+	# title screen.
+	if stream is AudioStreamWAV:
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+
+	if _menu_ambience.playing and _menu_ambience.stream == stream:
+		return
+	_menu_ambience.stream = stream
+	_menu_ambience.volume_db = -2.0
+	_menu_ambience.play()
+
+
+func stop_menu_ambience() -> void:
+	if _menu_ambience:
+		_menu_ambience.stop()

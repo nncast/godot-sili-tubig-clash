@@ -1,0 +1,218 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" uid="uid://uq3omdhc1jx3" path="res://game/arena/arena.gd" id="1_kdgho"]
+[ext_resource type="Script" uid="uid://bvyqnwddex64m" path="res://ui/hud/threat_vignette.gd" id="3_ksk8y"]
+[ext_resource type="Script" uid="uid://b4m220i2h3itl" path="res://ui/hud/event_feed.gd" id="4_jhjpt"]
+[ext_resource type="Script" uid="uid://c86sx7jg5nox1" path="res://ui/hud/minimap.gd" id="5_jqwhr"]
+[ext_resource type="Texture2D" uid="uid://dgvb1wyiyleho" path="res://game/assets/art/ui/Hud_Menu/settings.png" id="6_ksk5a"]
+[ext_resource type="Script" uid="uid://l0nvnaj46rxs" path="res://ui/hud/pregame_reveal.gd" id="7_qk5vs"]
+[ext_resource type="Script" uid="uid://bwr4vw5c3gkki" path="res://ui/hud/match_result.gd" id="8_ytb83"]
+[node name="MultiplayerArena" type="Node2D" unique_id=1328311220]
+script = ExtResource("1_kdgho")
+
+[node name="MapHolder" type="Node2D" parent="."]
+
+[node name="SiliSpawner" type="MultiplayerSpawner" parent="." unique_id=162836291]
+spawn_path = NodePath("../SiliContainer")
+
+[node name="TubigSpawner" type="MultiplayerSpawner" parent="." unique_id=162836292]
+spawn_path = NodePath("../TubigContainer")
+
+[node name="ThreatLayer" type="CanvasLayer" parent="." unique_id=948141855]
+layer = 9
+
+[node name="ThreatVignette" type="Control" parent="ThreatLayer" unique_id=52040338]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_ksk8y")
+metadata/_edit_use_anchors_ = true
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=882817203]
+layer = 10
+
+[node name="EventFeed" type="VBoxContainer" parent="HUD" unique_id=1443001900]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -430.0
+offset_top = -240.0
+offset_right = -16.0
+offset_bottom = -80.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("4_jhjpt")
+
+[node name="Minimap" type="Control" parent="HUD" unique_id=1432731096]
+layout_mode = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -196.0
+offset_top = 15.0
+offset_right = -16.0
+offset_bottom = 155.0
+grow_horizontal = 0
+mouse_filter = 2
+script = ExtResource("5_jqwhr")
+metadata/_edit_use_anchors_ = true
+
+[node name="TeamPanel" type="VBoxContainer" parent="HUD" unique_id=886074803]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 200.0
+offset_bottom = 140.0
+theme_override_constants/separation = 6
+metadata/_edit_use_anchors_ = true
+
+[node name="MatchLabel" type="Label" parent="HUD" unique_id=840059440]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -150.0
+offset_top = 16.0
+offset_right = 150.0
+offset_bottom = 56.0
+theme_override_font_sizes/font_size = 20
+text = "2:00"
+horizontal_alignment = 1
+metadata/_edit_use_anchors_ = true
+
+[node name="SettingsButton" type="Button" parent="HUD" unique_id=1383247187]
+tooltip_text = "Audio settings"
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -247.0
+offset_top = 16.0
+offset_right = -207.0
+offset_bottom = 56.0
+grow_horizontal = 0
+icon = ExtResource("6_ksk5a")
+flat = true
+alignment = 2
+icon_alignment = 1
+expand_icon = true
+metadata/_edit_use_anchors_ = true
+
+[node name="SettingsPopup" type="PanelContainer" parent="HUD" unique_id=1706362567]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -140.0
+offset_top = -110.0
+offset_right = 140.0
+offset_bottom = 110.0
+
+[node name="VBox" type="VBoxContainer" parent="HUD/SettingsPopup" unique_id=653669866]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="HUD/SettingsPopup/VBox" unique_id=733704253]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Settings"
+horizontal_alignment = 1
+
+[node name="MasterRow" type="HBoxContainer" parent="HUD/SettingsPopup/VBox" unique_id=67698607]
+layout_mode = 2
+
+[node name="MasterLabel" type="Label" parent="HUD/SettingsPopup/VBox/MasterRow" unique_id=22209783]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+text = "Master"
+
+[node name="MasterSlider" type="HSlider" parent="HUD/SettingsPopup/VBox/MasterRow" unique_id=1632438747]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="MusicRow" type="HBoxContainer" parent="HUD/SettingsPopup/VBox" unique_id=2081122683]
+layout_mode = 2
+
+[node name="MusicLabel" type="Label" parent="HUD/SettingsPopup/VBox/MusicRow" unique_id=890139984]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+text = "Music"
+
+[node name="MusicSlider" type="HSlider" parent="HUD/SettingsPopup/VBox/MusicRow" unique_id=2009475854]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="SFXRow" type="HBoxContainer" parent="HUD/SettingsPopup/VBox" unique_id=1929505214]
+layout_mode = 2
+
+[node name="SFXLabel" type="Label" parent="HUD/SettingsPopup/VBox/SFXRow" unique_id=1600505156]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+text = "SFX"
+
+[node name="SFXSlider" type="HSlider" parent="HUD/SettingsPopup/VBox/SFXRow" unique_id=863754619]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="AmbienceRow" type="HBoxContainer" parent="HUD/SettingsPopup/VBox" unique_id=1929505223]
+layout_mode = 2
+
+[node name="AmbienceLabel" type="Label" parent="HUD/SettingsPopup/VBox/AmbienceRow" unique_id=1600505165]
+custom_minimum_size = Vector2(70, 0)
+layout_mode = 2
+text = "Ambience"
+
+[node name="AmbienceSlider" type="HSlider" parent="HUD/SettingsPopup/VBox/AmbienceRow" unique_id=863754628]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="CloseButton" type="Button" parent="HUD/SettingsPopup/VBox" unique_id=1116732302]
+layout_mode = 2
+text = "Close"
+
+[node name="PregameLayer" type="CanvasLayer" parent="." unique_id=2091916670]
+layer = 20
+
+[node name="PregameReveal" type="Control" parent="PregameLayer" unique_id=1243961410]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_qk5vs")
+metadata/_edit_use_anchors_ = true
+
+[node name="ResultLayer" type="CanvasLayer" parent="." unique_id=2091916671]
+layer = 30
+
+[node name="MatchResult" type="Control" parent="ResultLayer" unique_id=1243961411]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("8_ytb83")
+
+[node name="SiliContainer" type="Node2D" parent="." unique_id=327789985]
+
+[node name="TubigContainer" type="Node2D" parent="." unique_id=327789986]

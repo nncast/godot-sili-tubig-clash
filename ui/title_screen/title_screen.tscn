@@ -1,20 +1,12 @@
 [gd_scene format=3 uid="uid://dtitle0001"]
 
 [ext_resource type="Script" uid="uid://hyep0gpoy4np" path="res://ui/title_screen/title_screen.gd" id="1_title"]
-[ext_resource type="Texture2D" uid="uid://dmmrbwfg7avcv" path="res://assets/ui/title.png" id="2_72buf"]
-[ext_resource type="FontFile" uid="uid://dt8i0axtwshee" path="res://assets/fonts/BoldPixels.ttf" id="2_ffat2"]
-[ext_resource type="Texture2D" uid="uid://dsswltwbq2fov" path="res://assets/ui/bg.jpg" id="4_rhiq2"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jrkqb"]
-bg_color = Color(0.57254905, 0.44313726, 0.3764706, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.28235295, 0.14509805, 0.12941177, 1)
-corner_radius_top_left = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+[ext_resource type="Texture2D" uid="uid://dmmrbwfg7avcv" path="res://game/assets/art/ui/title.png" id="2_72buf"]
+[ext_resource type="FontFile" uid="uid://dt8i0axtwshee" path="res://game/assets/fonts/BoldPixels.ttf" id="2_ffat2"]
+[ext_resource type="Texture2D" uid="uid://cv6k40ouuig57" path="res://game/assets/art/ui/background/background.png" id="4_rhiq2"]
+[ext_resource type="Texture2D" uid="uid://bi6j41yi8p7hi" path="res://game/assets/art/ui/background/vegetation_tree_palm3.png" id="5_ca08b"]
+[ext_resource type="Texture2D" uid="uid://ctqe00v7026s" path="res://game/assets/art/ui/background/vegetation_tree_palm5.png" id="6_lgnx5"]
+[ext_resource type="Texture2D" uid="uid://bdc1ex5p0hmfs" path="res://game/assets/art/ui/background/vegetation_tree_palm6.png" id="7_1djn3"]
 
 [node name="TitleScreen" type="Control" unique_id=1703636514]
 layout_mode = 3
@@ -25,6 +17,64 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_title")
 
+[node name="background" type="Control" parent="." unique_id=1285949950]
+z_index = -1
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="bg" type="TextureRect" parent="background" unique_id=1938321079]
+modulate = Color(0.5227242, 0.5227243, 0.5227242, 1)
+z_index = -1
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -44.0
+offset_top = -76.0
+offset_right = 4052.0
+offset_bottom = 2808.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.29266283, 0.29266283)
+mouse_filter = 2
+texture = ExtResource("4_rhiq2")
+
+[node name="palm" type="TextureRect" parent="background" unique_id=1233135666]
+modulate = Color(0.52156866, 0.52156866, 0.52156866, 1)
+z_index = -1
+layout_mode = 0
+offset_left = -173.0
+offset_top = 175.0
+offset_right = 324.0
+offset_bottom = 672.0
+texture = ExtResource("5_ca08b")
+flip_h = true
+
+[node name="palm2" type="TextureRect" parent="background" unique_id=2013811658]
+modulate = Color(0.52156866, 0.52156866, 0.52156866, 1)
+z_index = -1
+layout_mode = 0
+offset_left = 51.0
+offset_top = 324.0
+offset_right = 458.0
+offset_bottom = 731.0
+texture = ExtResource("6_lgnx5")
+flip_h = true
+
+[node name="palm3" type="TextureRect" parent="background" unique_id=1371028064]
+modulate = Color(0.52156866, 0.52156866, 0.52156866, 1)
+z_index = -1
+layout_mode = 0
+offset_left = 738.0
+offset_top = 152.0
+offset_right = 1271.0
+offset_bottom = 685.0
+texture = ExtResource("7_1djn3")
+flip_h = true
+
 [node name="TextureRect" type="TextureRect" parent="." unique_id=642236331]
 layout_mode = 1
 anchors_preset = 8
@@ -32,10 +82,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -140.0
-offset_top = -170.0
-offset_right = 140.0
-offset_bottom = -42.0
+offset_left = -201.0
+offset_top = -262.0
+offset_right = 188.375
+offset_bottom = -84.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("2_72buf")
@@ -81,6 +131,12 @@ theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Join Game"
 flat = true
 
+[node name="HowToButton" type="Button" parent="VBox" unique_id=418277301]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_ffat2")
+text = "How to Play"
+flat = true
+
 [node name="SettingsButton" type="Button" parent="VBox" unique_id=316910047]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("2_ffat2")
@@ -97,69 +153,228 @@ flat = true
 layout_mode = 2
 autowrap_mode = 2
 
-[node name="JoinPanel" type="PanelContainer" parent="." unique_id=1759550424]
+[node name="JoinPanel" type="Control" parent="." unique_id=1759550424]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="JoinPanel" unique_id=1759550420]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="Panel" type="PanelContainer" parent="JoinPanel" unique_id=1759550425]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -116.0
-offset_top = -50.0
-offset_right = 116.0
-offset_bottom = 44.0
+offset_left = -190.0
+offset_top = -80.0
+offset_right = 190.0
+offset_bottom = 80.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_jrkqb")
 
-[node name="VBox" type="VBoxContainer" parent="JoinPanel" unique_id=839750030]
+[node name="Margin" type="MarginContainer" parent="JoinPanel/Panel" unique_id=1759550426]
 layout_mode = 2
 
-[node name="CodeLabel" type="Label" parent="JoinPanel/VBox" unique_id=934805568]
+[node name="VBox" type="VBoxContainer" parent="JoinPanel/Panel/Margin" unique_id=839750030]
 layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CodeLabel" type="Label" parent="JoinPanel/Panel/Margin/VBox" unique_id=934805568]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
 text = "Enter lobby code or host IP"
 horizontal_alignment = 1
 
-[node name="CodeEdit" type="LineEdit" parent="JoinPanel/VBox" unique_id=1770047378]
+[node name="CodeEdit" type="LineEdit" parent="JoinPanel/Panel/Margin/VBox" unique_id=1770047378]
 layout_mode = 2
 placeholder_text = "0000 or 192.168.1.5"
-max_length = 39
+alignment = 1
 
-[node name="ButtonsRow" type="HBoxContainer" parent="JoinPanel/VBox" unique_id=1898757295]
+[node name="ButtonsRow" type="HBoxContainer" parent="JoinPanel/Panel/Margin/VBox" unique_id=1898757295]
 layout_mode = 2
+theme_override_constants/separation = 8
 
-[node name="JoinConfirmButton" type="Button" parent="JoinPanel/VBox/ButtonsRow" unique_id=1967562336]
+[node name="JoinConfirmButton" type="Button" parent="JoinPanel/Panel/Margin/VBox/ButtonsRow" unique_id=1967562336]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
 text = "Join"
 
-[node name="JoinCancelButton" type="Button" parent="JoinPanel/VBox/ButtonsRow" unique_id=1967562337]
+[node name="JoinCancelButton" type="Button" parent="JoinPanel/Panel/Margin/VBox/ButtonsRow" unique_id=1967562337]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
 text = "Cancel"
 
-[node name="bg" type="TextureRect" parent="." unique_id=1938321079]
-modulate = Color(0.5227242, 0.5227243, 0.5227242, 1)
-z_index = -1
+[node name="HowToPanel" type="Control" parent="." unique_id=1102938471]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="HowToPanel" unique_id=1102938472]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="Panel" type="PanelContainer" parent="HowToPanel" unique_id=1102938473]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -608.0
-offset_top = -397.0
-offset_right = 3488.0
-offset_bottom = 2487.0
+offset_left = -340.0
+offset_top = -260.0
+offset_right = 340.0
+offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 2
-scale = Vector2(0.29266283, 0.29266283)
-mouse_filter = 2
-texture = ExtResource("4_rhiq2")
 
-[node name="ExitConfirm" type="ConfirmationDialog" parent="." unique_id=515213007]
-oversampling_override = 1.0
-title = "Exit"
-initial_position = 1
-size = Vector2i(300, 100)
-dialog_text = "Are you sure you want to exit?"
+[node name="Margin" type="MarginContainer" parent="HowToPanel/Panel" unique_id=1102938474]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="HowToPanel/Panel/Margin" unique_id=1102938475]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="HowToPanel/Panel/Margin/VBox" unique_id=1102938476]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_ffat2")
+theme_override_font_sizes/font_size = 28
+text = "How to Play"
+horizontal_alignment = 1
+
+[node name="Body" type="RichTextLabel" parent="HowToPanel/Panel/Margin/VBox" unique_id=1102938477]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/line_separation = 2
+theme_override_font_sizes/normal_font_size = 18
+theme_override_font_sizes/bold_font_size = 18
+bbcode_enabled = true
+text = "[color=#ffd27f]THE GOAL[/color]
+One player is the [color=#ff5a55]Sili[/color] - the tagger. Everyone else is a [color=#5aa6ff]Tubig[/color] - a runner.
+The Sili wins by putting every Tubig out of the match. The Tubig win if even one of them is still free when the 3:00 clock reaches zero.
+
+[color=#ffd27f]CONTROLS[/color]
+Move - WASD or the Arrow Keys
+Sprint - hold Shift
+E - hold to rescue a burning teammate, tap to take a tunnel
+
+Sprinting drains your stamina bar. Empty it and you are exhausted for 2 seconds and cannot run at all. Both roles share the same stamina.
+
+[color=#ffd27f]PLAYING AS TUBIG[/color]
+- You have 3 hearts. Every tag costs one permanently. A rescue does not give it back.
+- Being tagged sets you burning: you are rooted where you stand for 15 seconds. A teammate who stands next to you and holds E for 6 seconds pulls you out. If nobody reaches you in time you are out for the rest of the match, and losing your last heart takes you out immediately.
+- Rescues shut off for the final 45 seconds. Anything that lands after that is final.
+- Hiding spots: stand still inside one for a moment and you go HIDDEN, dropping your dot off the team minimap. You are not invisible in the world - the Sili can still walk into you and tag you.
+- Tunnels: step into a mouth and press E to surface at the far end. Three trips per match, then they are spent. A burning teammate beside you always wins the key over the tunnel.
+- Your minimap shows teammates in blue. The Sili appears in red only while somebody on your team has them on screen.
+
+[color=#ffd27f]PLAYING AS SILI[/color]
+- You start at exactly the same walk and run speed as the Tubig, so you cannot simply outrun anyone early on.
+- You get faster as the clock drops: 1.12x at 0:30 elapsed, 1.26x at 1:05, 1.42x at 1:40, and 1.60x at 2:15.
+- Tagging is automatic. Touch a Tubig and they ignite - there is no button to press.
+- Your minimap only shows Tubig you have already tagged, so it stays empty until your first catch.
+
+[color=#ffd27f]BEFORE THE MATCH[/color]
+Everyone is shown who the Sili is during a 5 second reveal, and nobody can move until the countdown ends."
+
+[node name="CloseButton" type="Button" parent="HowToPanel/Panel/Margin/VBox" unique_id=1102938478]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("2_ffat2")
+theme_override_font_sizes/font_size = 24
+text = "Close"
+
+[node name="ExitPanel" type="Control" parent="." unique_id=515213007]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="ExitPanel" unique_id=515213008]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="Panel" type="PanelContainer" parent="ExitPanel" unique_id=515213009]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -190.0
+offset_top = -75.0
+offset_right = 190.0
+offset_bottom = 75.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="ExitPanel/Panel" unique_id=515213010]
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="ExitPanel/Panel/Margin" unique_id=515213011]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="ExitPanel/Panel/Margin/VBox" unique_id=515213012]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "Exit"
+horizontal_alignment = 1
+
+[node name="Message" type="Label" parent="ExitPanel/Panel/Margin/VBox" unique_id=515213013]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Are you sure you want to exit?"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="ButtonsRow" type="HBoxContainer" parent="ExitPanel/Panel/Margin/VBox" unique_id=515213014]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ExitConfirmButton" type="Button" parent="ExitPanel/Panel/Margin/VBox/ButtonsRow" unique_id=515213015]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.94, 0.62, 0.58, 1)
+theme_override_font_sizes/font_size = 22
+text = "Exit"
+
+[node name="ExitCancelButton" type="Button" parent="ExitPanel/Panel/Margin/VBox/ButtonsRow" unique_id=515213016]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+text = "Cancel"

@@ -6,12 +6,26 @@ extends Node
 const SETTINGS_PATH := "user://settings.cfg"
 const MIN_DB := -80.0
 
-var master_volume: float = 1.0
-var music_volume: float = 1.0
-var sfx_volume: float = 1.0
+## Defaults for a first launch. These are a deliberate mix, not four sliders
+## parked at 100%: this is a hide-and-seek game where the footsteps ARE the
+## information, so the gameplay layer sits loudest and everything else is
+## trimmed to stay out of its way.
+##
+##   Master   100%  the baseline the player pulls down if they need to
+##   Music     50%  atmosphere present, never competing with a footstep
+##   SFX       80%  tags, rescues, tunnels, footsteps - the cues that matter
+##   Ambience  40%  sells the beach without masking anything above it
+const DEFAULT_MASTER := 1.0
+const DEFAULT_MUSIC := 0.5
+const DEFAULT_SFX := 0.8
+const DEFAULT_AMBIENCE := 0.4
+
+var master_volume: float = DEFAULT_MASTER
+var music_volume: float = DEFAULT_MUSIC
+var sfx_volume: float = DEFAULT_SFX
 ## Ambience (the ocean loop) rides on its own bus under SFX, so this trims the
 ## waves without touching footsteps or UI blips.
-var ambience_volume: float = 1.0
+var ambience_volume: float = DEFAULT_AMBIENCE
 
 
 func _ready() -> void:
@@ -22,9 +36,13 @@ func load_settings() -> void:
 	var config := ConfigFile.new()
 	var err := config.load(SETTINGS_PATH)
 	if err == OK:
-		master_volume = config.get_value("audio", "master", 1.0)
-		music_volume = config.get_value("audio", "music", 1.0)
-		sfx_volume = config.get_value("audio", "sfx", 1.0)
+		master_volume = config.get_value("audio", "master", DEFAULT_MASTER)
+		music_volume = config.get_value("audio", "music", DEFAULT_MUSIC)
+		sfx_volume = config.get_value("audio", "sfx", DEFAULT_SFX)
+		# Ambience was written by save_settings() but never read back, so the
+		# slider reset to full every launch while the file quietly held the
+		# player's real choice.
+		ambience_volume = config.get_value("audio", "ambience", DEFAULT_AMBIENCE)
 	_apply_bus("Master", master_volume)
 	_apply_bus("Music", music_volume)
 	_apply_bus("SFX", sfx_volume)

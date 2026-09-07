@@ -304,7 +304,14 @@ func _legacy_cell_color(tile_map: TileMap, layer_idx: int, cell: Vector2i) -> Co
 	if _color_cache.has(key):
 		return _color_cache[key]
 
-	var region: Rect2i = source.get_tile_texture_region(atlas_coords, alternative)
+	# get_tile_texture_region's second argument is the ANIMATION FRAME, not the
+	# alternative tile. Passing `alternative` in here meant every flipped or
+	# transposed tile on the map sent a bit-flagged value like 4096 or 24576
+	# into a frame slot with one frame in it, which threw an out-of-bounds
+	# error per tile and left that cell un-sampled. Frame 0 is correct, and the
+	# alternative is irrelevant to the answer anyway: flipping a tile does not
+	# change its average colour.
+	var region: Rect2i = source.get_tile_texture_region(atlas_coords, 0)
 	var color := _average_region_color(source.texture, region)
 	_color_cache[key] = color
 	return color
@@ -325,7 +332,14 @@ func _layer_cell_color(layer: TileMapLayer, cell: Vector2i) -> Color:
 	if _color_cache.has(key):
 		return _color_cache[key]
 
-	var region: Rect2i = source.get_tile_texture_region(atlas_coords, alternative)
+	# get_tile_texture_region's second argument is the ANIMATION FRAME, not the
+	# alternative tile. Passing `alternative` in here meant every flipped or
+	# transposed tile on the map sent a bit-flagged value like 4096 or 24576
+	# into a frame slot with one frame in it, which threw an out-of-bounds
+	# error per tile and left that cell un-sampled. Frame 0 is correct, and the
+	# alternative is irrelevant to the answer anyway: flipping a tile does not
+	# change its average colour.
+	var region: Rect2i = source.get_tile_texture_region(atlas_coords, 0)
 	var color := _average_region_color(source.texture, region)
 	_color_cache[key] = color
 	return color

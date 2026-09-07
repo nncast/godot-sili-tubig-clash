@@ -1,6 +1,7 @@
 [gd_scene format=4 uid="uid://tpxu6l2i42so"]
 
 [ext_resource type="Texture2D" uid="uid://bk16wduyv6r4m" path="res://game/assets/art/tilesets/21_Beach_16x16.png" id="1_qdxyp"]
+[ext_resource type="Script" path="res://game/arena/systems/canopy_fade.gd" id="2_canopy"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_thns8"]
 texture = ExtResource("1_qdxyp")
@@ -2387,6 +2388,9 @@ sources/0 = SubResource("TileSetAtlasSource_thns8")
 [node name="palm" type="Node2D" unique_id=1272566322]
 
 [node name="over" type="TileMapLayer" parent="." unique_id=1395401655]
+z_index = 21
+script = ExtResource("2_canopy")
+fade_mode = 0
 z_index = 21
 tile_map_data = PackedByteArray("AAD+//3/AAAWAAgAAAD+//7/AAAWAAkAAAD+////AAAWAAoAAAD///3/AAAXAAgAAAD///7/AAAXAAkAAAD/////AAAXAAoAAAD//wAAAAAXAAsAAAAAAP3/AAAYAAgAAAAAAP7/AAAYAAkAAAAAAP//AAAYAAoAAAAAAAAAAAAYAAsAAAABAP3/AAAZAAgAAAABAP7/AAAZAAkAAAABAP//AAAZAAoAAAABAAAAAAAZAAsAAAAAAAEAAAAYAAwAAAD//wEAAAAXAAwAAAA=")
 tile_set = SubResource("TileSet_3sajy")

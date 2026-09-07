@@ -111,13 +111,33 @@ func _find_layers() -> void:
 	if map == null:
 		return
 	for entry in SURFACE_LAYERS:
-		var layer := map.get_node_or_null(NodePath(entry[0])) as TileMapLayer
+		var layer := _find_layer(map, entry[0])
 		if layer == null:
 			continue
 		_ordered_layers.append([layer, entry[1]])
 		if not _layers.has(entry[1]):
 			_layers[entry[1]] = []
 		_layers[entry[1]].append(layer)
+
+
+## Looks for a layer by NAME anywhere under the map, not just as a direct
+## child.
+##
+## The original version used a plain node path, so a level that grouped its
+## ground under a "ground" node - which is a perfectly reasonable way to
+## organise a map, and how the second map was being built - got silent
+## footsteps everywhere, with no error to explain why. Matching on name means
+## a map author can nest however they like and only has to get the NAME right.
+##
+## The direct child is still checked first, so a map that does have a top-level
+## "sand" wins over a nested one and nothing about the existing level changes.
+func _find_layer(map: Node, layer_name: String) -> TileMapLayer:
+	var direct := map.get_node_or_null(NodePath(layer_name)) as TileMapLayer
+	if direct != null:
+		return direct
+	for node in map.find_children(layer_name, "TileMapLayer", true, false):
+		return node as TileMapLayer
+	return null
 
 
 func _find_map() -> Node:

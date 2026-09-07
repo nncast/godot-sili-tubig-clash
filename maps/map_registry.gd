@@ -26,17 +26,13 @@ extends RefCounted
 ## tools/test_maps.gd checks 1-4 against every entry below.
 
 const MAPS := {
-	"boracay_shore": {
-		"name": "Boracay Shore",
-		"scene": "res://maps/boracay_shore/boracay_shore.tscn",
-	},
 	"boracay": {
-		"name": "Boracay (WIP)",
+		"name": "Boracay",
 		"scene": "res://maps/boracay/boracay.tscn",
 	},
 }
 
-const DEFAULT_MAP := "boracay_shore"
+const DEFAULT_MAP := "boracay"
 
 
 static func ids() -> Array:

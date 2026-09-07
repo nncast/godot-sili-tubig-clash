@@ -59,9 +59,11 @@ func _process(_d: float) -> bool:
 
 		# Ground layers are optional per map, but any that exist must be named
 		# from the SurfaceAudio vocabulary or footsteps go silent with no error.
+		# Recursive, matching how surface_audio.gd now resolves layers - a map
+		# may group its ground under a "ground" node.
 		var named := []
-		for child in m.get_children():
-			if child is TileMapLayer and child.name in GROUND:
+		for child in m.find_children("*", "TileMapLayer", true, false):
+			if child.name in GROUND:
 				named.append(String(child.name))
 		print("        ground layers found: %s" % str(named))
 		_c("%s: has at least one known ground layer" % id, named.size() >= 1, true)

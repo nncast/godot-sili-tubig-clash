@@ -133,9 +133,7 @@ func _ready() -> void:
 	stamina_changed.connect(_on_stamina_changed)
 
 	heat_status.state_changed.connect(_on_heat_state_changed)
-
-	rescue_bar.visible = false
-	rescue_progress.connect(_on_rescue_progress)
+	
 	heat_status.lives_changed.connect(_on_lives_changed)
 	# Fires on every peer, because is_immune is replicated - which is what lets
 	# a bystander see the rescued player flash rather than only the person it
@@ -760,12 +758,6 @@ func _exit_exhaustion() -> void:
 
 func _on_stamina_changed(current_stamina: float, max_stamina: float) -> void:
 	stamina_bar.value = current_stamina
-
-
-func _on_rescue_progress(progress: float) -> void:
-	rescue_bar.visible = progress > 0.0
-	rescue_bar.value = progress * 100.0
-
 
 func _on_lives_changed(new_lives_left: int) -> void:
 	_update_hearts(new_lives_left)

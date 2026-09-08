@@ -13,6 +13,10 @@ const TUBIG_DEAD_COLOR := Color(0.42, 0.42, 0.44)
 const DEAD_ROW_TINT := Color(0.55, 0.55, 0.55, 0.65)
 ## Matches Tubig.HEART_SPENT_COLOR so the two heart displays stay in step.
 const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
+## Burn countdown next to a tagged teammate's dot - amber while the run is
+## still worth making, red once it probably isn't.
+const BURN_TIMER_COLOR := Color(1.0, 0.78, 0.30)
+const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.42, 0.36)
 
 @onready var match_label: Label = $HUD/MatchLabel
 @onready var team_panel: VBoxContainer = $HUD/TeamPanel
@@ -363,6 +367,25 @@ func _build_team_panel() -> void:
 		dot.add_theme_stylebox_override("panel", dot_style)
 		row.add_child(dot)
 
+		# Seconds left before this teammate's burn goes permanent, sat right
+		# next to the status dot.
+		#
+		# The red dot said someone was tagged. It did not say whether a rescue
+		# was still possible, and the rescue channel alone eats six of the
+		# thirty seconds - so without the number, deciding whether to make the
+		# run across the map was a guess. With it, it's arithmetic.
+		#
+		# Fixed width and always present (blank when nobody is burning) so the
+		# name and hearts don't slide sideways every time a tag lands.
+		var burn_label := Label.new()
+		burn_label.custom_minimum_size = Vector2(26, 0)
+		burn_label.add_theme_font_size_override("font_size", 13)
+		burn_label.add_theme_color_override("font_color", BURN_TIMER_COLOR)
+		burn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		burn_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		burn_label.text = ""
+		row.add_child(burn_label)
+
 		# The ONLY place a player's name appears during a match. Names are
 		# deliberately never drawn above characters in-world: at a glance
 		# mid-chase you should be reading team colour and nothing else, so
@@ -408,6 +431,21 @@ func _build_team_panel() -> void:
 				heart_icons[i].modulate = (
 					Color.WHITE if i < lives_remaining else HEART_SPENT_COLOR)
 
+		# Blank unless they are actually Burning. A DEAD player's last count
+		# would freeze at some arbitrary number and read as "still savable",
+		# which is the exact decision this label exists to get right.
+		var update_burn_timer := func(seconds_left: int):
+			if not is_instance_valid(row) or not is_instance_valid(burn_label):
+				return
+			if heat and heat.is_burning() and seconds_left > 0:
+				burn_label.text = "%ds" % seconds_left
+				# Turns red under ten seconds - past the six-second channel
+				# plus travel, the run has usually stopped being worth it.
+				burn_label.add_theme_color_override("font_color",
+					BURN_TIMER_URGENT_COLOR if seconds_left <= 10 else BURN_TIMER_COLOR)
+			else:
+				burn_label.text = ""
+
 		var update_dot := func(new_state):
 			if not is_instance_valid(row) or not is_instance_valid(tubig):
 				return
@@ -426,11 +464,17 @@ func _build_team_panel() -> void:
 					row.modulate = Color.WHITE
 			if heat:
 				update_hearts.call(heat.lives_left)
+				# A state flip (rescued, or timed out) has to clear the number
+				# immediately; waiting for the next burn_time_changed would
+				# leave a stale countdown next to a blue or grey dot.
+				update_burn_timer.call(heat.burn_seconds_left)
 		if heat:
 			_track_connection(heat, &"state_changed", update_dot)
 			_track_connection(heat, &"lives_changed", update_hearts)
+			_track_connection(heat, &"burn_time_changed", update_burn_timer)
 			update_dot.call(heat.state)
 			update_hearts.call(heat.lives_left)
+			update_burn_timer.call(heat.burn_seconds_left)
 
 
 ## Instances the level the host chose and parks it under MapHolder.

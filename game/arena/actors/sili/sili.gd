@@ -114,6 +114,11 @@ func _try_tag(body: Node2D) -> void:
 	var target_heat: HeatStatus = body.get_node_or_null("HeatStatus")
 	if target_heat == null or target_heat.is_incapacitated():
 		return
+	# Just rescued. The server would refuse this anyway (see HeatStatus.ignite),
+	# so bailing here keeps the tag sound and the feed line from firing for a
+	# hit that is never going to land. is_immune is replicated for exactly this.
+	if target_heat.is_immune:
+		return
 
 	if multiplayer.has_multiplayer_peer():
 		target_heat.rpc_id(1, "request_ignite")
@@ -126,6 +131,10 @@ func _try_tag(body: Node2D) -> void:
 	# Sili's: a nearby Tubig hearing this needs to know where their teammate
 	# just went down, which is the information worth having.
 	AudioManager.play_sfx_at("tag", body.global_position)
+	# "Ang anghang!!" layered on top of the mechanical tag sfx, at the same
+	# place. The synth hit carries the timing; the voice carries the identity.
+	# AudioManager gates it, so four tags in one scramble give one shout.
+	AudioManager.play_callout("anghang", body.global_position)
 	MatchManager.broadcast_event("Sili tagged %s" % _name_of(body), "tag")
 
 

@@ -41,6 +41,9 @@ const TRANSPARENT := Color(0, 0, 0, 0)
 
 var _map_texture: ImageTexture = null
 var _world_rect: Rect2 = Rect2()
+## Where the world is drawn inside this Control, after aspect-fitting. Written
+## by _draw and read by _map_point, so terrain and dots always share one rect.
+var _view_rect: Rect2 = Rect2()
 var _local_player: Node2D = null
 var _local_is_sili: bool = false
 var _tubig_players: Array = []
@@ -118,38 +121,103 @@ func _bake_legacy_tilemap(tile_map: TileMap) -> void:
 	_finish_bake(image, tile_map.to_global(local_origin), Vector2(used.size) * tile_size)
 
 
-## Separate TileMapLayer nodes: each is its own object with its own used_rect,
-## walked in the order they were found (bottom to top), same as the legacy path.
+## Separate TileMapLayer nodes, baked in WORLD space rather than cell space.
+##
+## The obvious version of this - merge every layer's get_used_rect() and index
+## the result with one shared cell coordinate - is wrong the moment two layers
+## do not share a transform, and they routinely don't. In boracay.tscn,
+## ground/sea and decorations/sand sit at position (1264, 144) while
+## ground/sand and ground/grass sit at the origin. Cell (0, 0) therefore means
+## two different places in the world depending on which layer you ask, so
+## merging their rects stacked the sea 79 cells left and 9 cells up from the
+## sand it is supposed to border, and anchoring the finished image to layers[0]
+## dragged the whole world_rect off by that same offset - which is why the
+## terrain looked scrambled AND the dots sat away from the ground under them.
+##
+## So: bounds are merged in world space, and each output pixel is converted
+## back through each layer's OWN transform to find the cell to sample. Layers
+## can now sit anywhere, at any offset, with different tile sizes, and still
+## line up - and the world_rect the dots are plotted against is the real one.
 func _bake_tile_map_layers(layers: Array) -> void:
-	var used := Rect2i()
+	var world_bounds := Rect2()
 	var has_bounds := false
+	# Output resolution is set by the FINEST layer, so a coarse decorative
+	# layer can't force the whole map to be sampled at its own chunky grid.
+	var pixel_size := Vector2(INF, INF)
+
+	var painted: Array = []
 	for layer in layers:
-		var layer_rect: Rect2i = layer.get_used_rect()
-		if layer_rect.size == Vector2i.ZERO:
+		var used: Rect2i = layer.get_used_rect()
+		if used.size == Vector2i.ZERO:
 			continue
-		used = layer_rect if not has_bounds else used.merge(layer_rect)
+		var tile_size := Vector2(layer.tile_set.tile_size)
+		var layer_rect := _layer_world_rect(layer, used, tile_size)
+		world_bounds = layer_rect if not has_bounds else world_bounds.merge(layer_rect)
 		has_bounds = true
-	if not has_bounds or not _size_within_limit(used.size):
+
+		# basis_xform, not the raw tile_size: a layer that has been scaled
+		# covers more world per cell, and the pixel grid has to follow.
+		var world_tile: Vector2 = layer.get_global_transform().basis_xform(tile_size).abs()
+		pixel_size.x = minf(pixel_size.x, maxf(world_tile.x, 1.0))
+		pixel_size.y = minf(pixel_size.y, maxf(world_tile.y, 1.0))
+		painted.append(layer)
+
+	if not has_bounds or painted.is_empty():
+		return
+	if world_bounds.size.x <= 0.0 or world_bounds.size.y <= 0.0:
 		return
 
-	var image := _new_bake_image(used.size)
-	for y in used.size.y:
-		for x in used.size.x:
-			var cell := Vector2i(used.position.x + x, used.position.y + y)
+	pixel_size = _fit_pixel_size(world_bounds.size, pixel_size)
+	var image_size := Vector2i(
+		maxi(1, int(ceil(world_bounds.size.x / pixel_size.x))),
+		maxi(1, int(ceil(world_bounds.size.y / pixel_size.y))))
+
+	var image := _new_bake_image(image_size)
+	for y in image_size.y:
+		for x in image_size.x:
+			# Centre of this output pixel, in world space - the one coordinate
+			# every layer agrees on.
+			var world_pos := world_bounds.position + Vector2(x + 0.5, y + 0.5) * pixel_size
 			var pixel := TRANSPARENT
-			for i in range(layers.size() - 1, -1, -1):
-				var candidate := _layer_cell_color(layers[i], cell)
+			for i in range(painted.size() - 1, -1, -1):
+				var layer: TileMapLayer = painted[i]
+				var cell: Vector2i = layer.local_to_map(layer.to_local(world_pos))
+				var candidate := _layer_cell_color(layer, cell)
 				if candidate.a > 0.05:
 					pixel = candidate
 					break
 			image.set_pixel(x, y, pixel)
 
-	var reference: TileMapLayer = layers[0]
-	var tile_size := Vector2(reference.tile_set.tile_size)
-	var local_origin: Vector2 = reference.map_to_local(used.position) - tile_size * 0.5
-	_finish_bake(image, reference.to_global(local_origin), Vector2(used.size) * tile_size)
+	_finish_bake(image, world_bounds.position, world_bounds.size)
 
 
+## World-space bounds of a layer's painted area, via its own global transform
+## so an offset, rotated or scaled layer reports where it actually is.
+func _layer_world_rect(layer: TileMapLayer, used: Rect2i, tile_size: Vector2) -> Rect2:
+	var top_left: Vector2 = layer.map_to_local(used.position) - tile_size * 0.5
+	var bottom_right: Vector2 = layer.map_to_local(used.end) - tile_size * 0.5
+	var rect := Rect2(layer.to_global(top_left), Vector2.ZERO)
+	rect = rect.expand(layer.to_global(Vector2(bottom_right.x, top_left.y)))
+	rect = rect.expand(layer.to_global(Vector2(top_left.x, bottom_right.y)))
+	return rect.expand(layer.to_global(bottom_right))
+
+
+## Coarsens the sample grid until the output fits MAX_BAKE_DIMENSION.
+##
+## The previous behaviour on an oversized map was to bail and draw no terrain
+## at all, which reads to a player as a broken mini-map. A blurrier map is a
+## far better answer than an empty one, and at this display size (a 180x140
+## corner box) the difference is close to invisible anyway.
+func _fit_pixel_size(world_size: Vector2, pixel_size: Vector2) -> Vector2:
+	var limit := float(MAX_BAKE_DIMENSION)
+	var over := maxf(world_size.x / pixel_size.x / limit, world_size.y / pixel_size.y / limit)
+	if over <= 1.0:
+		return pixel_size
+	return pixel_size * over
+
+
+## Still used by the legacy single-TileMap path above, which shares one
+## transform across all its layers and so can safely stay in cell space.
 func _size_within_limit(cell_size: Vector2i) -> bool:
 	if cell_size.x > MAX_BAKE_DIMENSION or cell_size.y > MAX_BAKE_DIMENSION:
 		push_warning("Minimap: tilemap too large to bake (%s cells), skipping terrain." % cell_size)
@@ -204,8 +272,18 @@ func _draw() -> void:
 	var frame := Rect2(Vector2.ZERO, size)
 	draw_rect(frame, COLOR_BACKDROP, true)
 
+	# The panel is 180x140; a level is rarely that shape. Stretching the world
+	# to fill it squashes one axis, so distances read wrong on the map - two
+	# teammates equally far away look like one is much closer, which is exactly
+	# the judgement the rescue guide lines are asking players to make. Fitting
+	# and letterboxing costs a strip of empty backdrop and keeps the geometry
+	# honest. Cached because _map_point needs the same rect for the dots; using
+	# `size` there while drawing the texture here would put every dot back off
+	# the terrain again.
+	_view_rect = _fitted_view_rect(frame)
+
 	if _map_texture:
-		draw_texture_rect(_map_texture, frame, false)
+		draw_texture_rect(_map_texture, _view_rect, false)
 
 	draw_rect(frame, COLOR_BORDER, false, 1.0)
 
@@ -349,7 +427,18 @@ func _map_point(world_pos: Vector2) -> Vector2:
 	var uv := (world_pos - _world_rect.position) / _world_rect.size
 	uv.x = clampf(uv.x, 0.0, 1.0)
 	uv.y = clampf(uv.y, 0.0, 1.0)
-	return uv * size
+	var view := _view_rect if _view_rect.size.x > 0.0 else Rect2(Vector2.ZERO, size)
+	return view.position + uv * view.size
+
+
+## Largest rect with the world's aspect ratio that fits inside the panel,
+## centred. Falls back to the whole panel before the first bake lands.
+func _fitted_view_rect(frame: Rect2) -> Rect2:
+	if _world_rect.size.x <= 0.0 or _world_rect.size.y <= 0.0:
+		return frame
+	var scale: float = minf(frame.size.x / _world_rect.size.x, frame.size.y / _world_rect.size.y)
+	var fitted := _world_rect.size * scale
+	return Rect2(frame.position + (frame.size - fitted) * 0.5, fitted)
 
 
 # --- Terrain baking helpers ---

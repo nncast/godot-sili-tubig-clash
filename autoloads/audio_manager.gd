@@ -35,7 +35,29 @@ const SFX_NAMES: Array[String] = [
 	"tag", "burn_tick", "rescue_start", "rescue_complete", "tunnel",
 	"countdown", "countdown_go", "match_win", "match_lose",
 	"eliminated", "spotted",
+	# Filipino voice callouts - see CALLOUTS below.
+	"callout_taya", "callout_anghang", "callout_save",
 ]
+
+## Recorded Filipino callouts, layered OVER the mechanical sfx rather than
+## replacing them: the synthesised tick still carries the timing information,
+## the voice carries the identity. Team-recorded, which is both free and
+## genuinely original work rather than a licensed pack.
+##
+## Loading is by name through _load_sfx, and a name with no file on disk simply
+## warns and never plays - so this ships harmlessly before the recordings
+## exist, and starts working the moment the .wav files are dropped in.
+## Recording notes live in game/assets/audio/sfx/CALLOUTS.md.
+const CALLOUTS := {
+	"taya": "callout_taya",        # "Taya!" - the Sili has been spotted
+	"anghang": "callout_anghang",  # "Ang anghang!!" - a tag just landed
+	"save": "callout_save",        # "Save!" - a rescue completed
+}
+
+## A human voice cutting over itself sounds broken in a way a synthesised blip
+## does not, so callouts are gated: one at a time, with a floor between them.
+## Four players tagged in the same second gives one "Ang anghang!!", not four.
+const CALLOUT_MIN_GAP := 0.9
 
 ## Per-sound trim, because a fanfare and a footstep-adjacent tick should not
 ## arrive at the same level. Anything unlisted plays at 0 dB.
@@ -92,6 +114,7 @@ var _danger_active := false
 var _ui_voices: Array[AudioStreamPlayer] = []
 var _ui_voice_index := 0
 var _last_hover_at := -1.0
+var _last_callout_at := -999.0
 var _ambience_preview: AudioStreamPlayer
 ## Menu-side ocean loop. Separate from the in-match ambience, which
 ## surface_audio.gd fades in and out by how close a player is to the shoreline
@@ -138,6 +161,7 @@ func _ready() -> void:
 	MatchManager.match_ended.connect(_on_match_ended)
 	MatchManager.pregame_tick.connect(_on_pregame_tick)
 	MatchManager.pregame_finished.connect(_on_pregame_finished)
+	SightingTracker.sili_spotted_changed.connect(_on_sili_spotted_changed)
 
 	play_title_music()
 
@@ -323,6 +347,21 @@ func _on_pregame_finished() -> void:
 	play_sfx("countdown_go")
 
 
+## "Taya!" - the Sili has been found. Fires on the rising edge only: the flag
+## flickers as a chase weaves behind cover, and a voice re-announcing the same
+## Sili every two seconds stops being information and becomes noise. The
+## CALLOUT_MIN_GAP gate catches the rest.
+##
+## This also finally gives the `spotted` sfx a call site - it was loaded and
+## never played, so the moment the whole team learns where the Sili is passed
+## in silence.
+func _on_sili_spotted_changed(is_spotted: bool) -> void:
+	if not is_spotted:
+		return
+	play_sfx("spotted")
+	play_callout("taya")
+
+
 # --- UI blips ---------------------------------------------------------------
 
 func play_ui_hover() -> void:
@@ -371,6 +410,31 @@ func play_sfx(sfx_name: String, extra_db: float = 0.0) -> void:
 	voice.stream = _sfx[sfx_name]
 	voice.volume_db = float(SFX_DB.get(sfx_name, 0.0)) + extra_db
 	voice.play()
+
+
+## Plays a Filipino callout by its short key ("taya", "anghang", "save").
+##
+## Positional when given a place, flat otherwise. A tag callout belongs at the
+## tagged player's feet for the same reason the tag sfx does - it tells a
+## nearby teammate which way to look. The reveal callout has no single place
+## it happened at, so it plays flat.
+##
+## Silently does nothing if the clip hasn't been recorded yet, or if another
+## callout is still in the air.
+func play_callout(key: String, world_position = null, extra_db: float = 0.0) -> void:
+	var sfx_name: String = CALLOUTS.get(key, "")
+	if sfx_name == "" or not _sfx.has(sfx_name):
+		return
+
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _last_callout_at < CALLOUT_MIN_GAP:
+		return
+	_last_callout_at = now
+
+	if world_position is Vector2:
+		play_sfx_at(sfx_name, world_position, extra_db)
+	else:
+		play_sfx(sfx_name, extra_db)
 
 
 ## World-space. Use for anything a bystander should be able to LOCATE - a tag

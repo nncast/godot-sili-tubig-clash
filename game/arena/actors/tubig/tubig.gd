@@ -45,6 +45,16 @@ const FRICTION = 1200.0
 ## comment on HeatStatus.lives_left. This script only draws it.
 @export var RESCUE_CHANNEL_TIME: float = 6.0  # seconds, per doc's 5-8s range
 
+## --- Rescue burst ---
+## The other half of rescue immunity (the tag-proof half lives on HeatStatus).
+## Being untaggable is worthless if you stand up inside the Sili's hitbox and
+## walk away at the same speed they walk - you are simply re-tagged the frame
+## the immunity ends. The burst is what turns those 1.5 seconds into actual
+## distance. Runs slightly longer than the immunity so the sprint doesn't die
+## at the exact moment you become vulnerable again.
+@export var RESCUE_BURST_TIME: float = 2.0
+@export var RESCUE_BURST_SPEED_SCALE: float = 1.35
+
 ## --- Stealth ---
 @export var CONCEAL_SETTLE_TIME: float = 0.35  # how long you must hold still inside a hiding spot
 @export var CONCEALED_SPRITE_ALPHA: float = 0.55  # local-only feedback, not real invisibility
@@ -108,6 +118,8 @@ var tunnel_uses_left: int = TUNNEL_USES_MAX
 var _nearby_fountain: Fountain = null
 var _fountain_prompt: Label = null
 var _stamina_buff_remaining: float = 0.0
+var _rescue_burst_remaining: float = 0.0
+var _struggle_prompt: Label = null
 @onready var rescue_indicator: ProgressBar = $RescueIndicator
 @onready var rescue_indicator_label: Label = $RescueIndicator/RescueLabel
 
@@ -125,6 +137,10 @@ func _ready() -> void:
 	rescue_bar.visible = false
 	rescue_progress.connect(_on_rescue_progress)
 	heat_status.lives_changed.connect(_on_lives_changed)
+	# Fires on every peer, because is_immune is replicated - which is what lets
+	# a bystander see the rescued player flash rather than only the person it
+	# happened to.
+	heat_status.immunity_changed.connect(_on_immunity_changed)
 
 	_update_hearts(heat_status.lives_left)
 
@@ -189,7 +205,14 @@ func _physics_process(delta: float) -> void:
 		_cancel_rescue_channel()
 		is_concealed = false
 		_conceal_timer = 0.0
+		# Being tagged used to mean fifteen to thirty seconds of holding no
+		# keys and watching. This is the one thing a rooted player can still
+		# do, so it is handled here rather than above the incapacitated guard.
+		_handle_struggle_input()
+		_update_struggle_prompt()
 		return
+
+	_hide_struggle_prompt()
 
 	var input_vector := Input.get_vector("left", "right", "up", "down")
 	var wants_to_run := Input.is_action_pressed("run") or Input.is_key_pressed(KEY_SHIFT)
@@ -197,6 +220,7 @@ func _physics_process(delta: float) -> void:
 
 	_tunnel_cooldown = maxf(0.0, _tunnel_cooldown - delta)
 	_stamina_buff_remaining = maxf(0.0, _stamina_buff_remaining - delta)
+	_rescue_burst_remaining = maxf(0.0, _rescue_burst_remaining - delta)
 	if Input.is_action_just_pressed("rescue"):
 		_try_interact()
 	_update_tunnel_prompt()
@@ -222,6 +246,11 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var current_speed := RUN_SPEED if is_running else WALK_SPEED
+	# Multiplies whichever speed you were already at, so the burst helps a
+	# player with no stamina left too - which is the usual state of someone who
+	# just got caught after a long chase.
+	if _rescue_burst_remaining > 0.0:
+		current_speed *= RESCUE_BURST_SPEED_SCALE
 
 	if is_moving:
 		velocity = input_vector * current_speed
@@ -309,6 +338,88 @@ func _cancel_rescue_channel() -> void:
 	_rescue_timer = 0.0
 	_progress_broadcast_accum = 0.0
 	rescue_progress.emit(0.0)
+
+
+# --- Struggling out of a burn ---
+
+## Sends the tap; the server decides whether it counts. Deliberately does NOT
+## rate-limit locally beyond "just pressed" - the interval and the ceiling are
+## both enforced in HeatStatus._apply_struggle, and duplicating them here would
+## create two places to disagree about the same rule.
+##
+## DEAD players are excluded: the burn already timed out, so there is nothing
+## left to buy back and letting them keep tapping would read as the mechanic
+## being broken rather than as being out of the round.
+func _handle_struggle_input() -> void:
+	if not heat_status.is_burning():
+		return
+	if not Input.is_action_just_pressed("struggle"):
+		return
+	if multiplayer.has_multiplayer_peer():
+		heat_status.rpc_id(1, "request_struggle")
+	else:
+		heat_status.request_struggle()
+
+
+## States the budget on screen, because a cap nobody can see reads as a bug.
+## Shows seconds bought against seconds available, so the moment the taps stop
+## working is a number the player watched fill up rather than a surprise.
+func _update_struggle_prompt() -> void:
+	if _struggle_prompt == null:
+		_struggle_prompt = Label.new()
+		_struggle_prompt.name = "StrugglePrompt"
+		_struggle_prompt.anchor_left = 0.5
+		_struggle_prompt.anchor_right = 0.5
+		_struggle_prompt.anchor_top = 1.0
+		_struggle_prompt.anchor_bottom = 1.0
+		_struggle_prompt.offset_left = -160.0
+		_struggle_prompt.offset_right = 160.0
+		_struggle_prompt.offset_top = -158.0
+		_struggle_prompt.offset_bottom = -132.0
+		_struggle_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_struggle_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		_struggle_prompt.add_theme_constant_override("outline_size", 5)
+		ui_layer.add_child(_struggle_prompt)
+
+	if heat_status.is_dead():
+		_struggle_prompt.text = "Burned out - wait for the next round"
+		_struggle_prompt.modulate = Color(0.6, 0.6, 0.62)
+		_struggle_prompt.visible = true
+		return
+
+	if heat_status.struggle_exhausted():
+		_struggle_prompt.text = "Can't hold on any longer (+%.1fs used)" % heat_status.STRUGGLE_MAX_BONUS
+		_struggle_prompt.modulate = Color(0.85, 0.55, 0.35)
+	else:
+		_struggle_prompt.text = "Mash [SPACE] to hold on  (+%.1fs / %.1fs max)" % [
+			heat_status.struggle_bonus, heat_status.STRUGGLE_MAX_BONUS]
+		_struggle_prompt.modulate = Color(1.0, 0.82, 0.35)
+	_struggle_prompt.visible = true
+
+
+func _hide_struggle_prompt() -> void:
+	if _struggle_prompt:
+		_struggle_prompt.visible = false
+
+
+## Runs on every peer. The local player gets the speed burst (they are the only
+## one simulating their own movement); everyone gets the flash, so the Sili can
+## see why their tag did nothing instead of concluding the hitbox is broken.
+func _on_immunity_changed(immune: bool) -> void:
+	# self_modulate, not modulate: concealment already owns `modulate.a` (see
+	# _on_concealment_changed), and the two multiply, so writing the flash into
+	# a separate channel means neither can stamp on the other's value.
+	if not immune:
+		animated_sprite.self_modulate = Color.WHITE
+		return
+
+	if not multiplayer.has_multiplayer_peer() or is_multiplayer_authority():
+		_rescue_burst_remaining = RESCUE_BURST_TIME
+
+	animated_sprite.self_modulate = Color(1.4, 1.4, 1.8)
+	var tween := create_tween()
+	tween.tween_property(animated_sprite, "self_modulate", Color.WHITE,
+		heat_status.RESCUE_IMMUNITY_TIME)
 
 
 # --- Stealth / hiding places ---
@@ -671,6 +782,9 @@ func _on_heat_state_changed(new_state: HeatStatus.State) -> void:
 		AudioManager.play_sfx_at("eliminated", global_position)
 	elif new_state == HeatStatus.State.NORMAL:
 		AudioManager.play_sfx_at("rescue_complete", global_position)
+		# "Save!" - runs on every peer for the same reason the sfx does, so the
+		# Sili hears that the body they were circling just got up.
+		AudioManager.play_callout("save", global_position)
 
 
 func _play_heat_animation() -> void:

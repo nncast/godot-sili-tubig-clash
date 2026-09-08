@@ -22,6 +22,7 @@ buses/default_bus_layout="res://game/assets/audio/bus_layout.tres"
 
 [autoload]
 
+LoadingScreen="*res://ui/loading/loading_screen.gd"
 MatchManager="*res://autoloads/match_manager.gd"
 NetworkManager="*res://autoloads/network_manager.gd"
 GameSettings="*res://autoloads/game_settings.gd"

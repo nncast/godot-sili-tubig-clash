@@ -370,4 +370,10 @@ func _rpc_assign_roles(new_roles: Dictionary) -> void:
 func _rpc_load_arena(map_id: String) -> void:
 	current_map_id = map_id
 	match_starting.emit()
-	get_tree().change_scene_to_file(ARENA_SCENE)
+	# Behind the curtain rather than a bare change_scene_to_file: the arena
+	# plus its map is a second or more of blocking work, and doing it raw left
+	# the lobby frozen on screen looking like a crash. The map is named as a
+	# preload so it comes off the worker thread here instead of blocking inside
+	# arena.gd's _load_map(), which runs during _ready() where nothing can
+	# yield. Deliberately not awaited - change_scene drives itself.
+	LoadingScreen.change_scene(ARENA_SCENE, [MapRegistry.scene_path(map_id)])

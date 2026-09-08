@@ -41,7 +41,21 @@ enum FadeMode {
 
 ## Alpha while you are underneath. Not 0 - a faint canopy reads as "you are
 ## under something", where clearing it fully just looks like the art vanished.
-@export var faded_alpha: float = 0.3
+##
+## Lowered from 0.3: at that value the palm fronds were still dark enough to
+## lose a 24px character against them, which defeats the point of fading at
+## all. 0.15 keeps the silhouette of the tree readable while letting you
+## actually see yourself run underneath it.
+##
+## Written through a setter rather than only in _ready() so dragging this in
+## the inspector updates the shader on the spot - the previous version pushed
+## the value once at startup, so tuning it meant restarting the scene every
+## time.
+@export var faded_alpha: float = 0.15:
+	set(value):
+		faded_alpha = clampf(value, 0.0, 1.0)
+		if _material != null:
+			_material.set_shader_parameter("faded_alpha", faded_alpha)
 
 ## How fast the fade settles, in alpha units per second. Slow enough to read as
 ## a fade rather than a flicker when you clip the corner of a canopy.

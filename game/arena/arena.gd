@@ -534,24 +534,47 @@ func _drop_panel_connections() -> void:
 	_panel_connections.clear()
 
 
-## The Sili wins only when every Tubig is DEAD - permanently out.
+## The Sili wins once no Tubig can still be rescued.
 ##
-## This used to end the match as soon as nobody was in the NORMAL state, which
-## counted a burning player as already beaten. Burning is temporary by design:
-## they are rooted, but a teammate has thirty seconds to reach them. Ending
-## there threw away the most dramatic moment the game has - four burning
-## players and one rescue channel running - and made the rescue mechanic
-## meaningless exactly when it mattered most. Now a burn has to actually time
-## out for it to count.
+## Waiting for every Tubig to be DEAD was too slow at the end. A burn is only
+## temporary because a TEAMMATE can come and undo it, and a teammate who is
+## themselves burning or dead cannot: heat_status.gd's request_cool_fully
+## rejects an incapacitated rescuer, and rejects rescuing yourself. So the
+## moment the last free Tubig is tagged, every burn still running is already
+## decided - the players just sat and watched the burn clock tick down for
+## thirty seconds before the game agreed with them.
+##
+## The condition is therefore "nobody is in NORMAL state", not "everybody is
+## DEAD". That still protects the case the burn window exists for: as long as
+## one Tubig is on their feet, the match keeps running and the rescue is live,
+## however many teammates are burning.
 func _check_for_sili_win() -> void:
-	if not multiplayer.is_server():
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 		return
+	if _tubig_players.is_empty():
+		return  # nothing spawned yet; nothing to decide
+
+	var free_tubigs := 0
+	var doomed_burns := 0
 	for tubig in _tubig_players:
 		if not is_instance_valid(tubig):
 			continue
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
-		if heat and not heat.is_dead():
-			return  # someone is still free, or still savable
+		if heat == null or heat.is_dead():
+			continue
+		if heat.is_burning():
+			doomed_burns += 1
+		else:
+			free_tubigs += 1
+
+	if free_tubigs > 0:
+		return  # someone is still up, so a rescue is still possible
+
+	# Says WHY the match ended here rather than at the buzzer, so the last
+	# player tagged doesn't read it as the clock being cut short.
+	if doomed_burns > 0:
+		MatchManager.broadcast_event(
+			"No Tubig left standing - the burns can't be undone.", "warning")
 	MatchManager.end_match(true)
 
 

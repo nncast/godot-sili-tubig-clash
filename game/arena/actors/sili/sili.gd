@@ -40,6 +40,13 @@ func _ready() -> void:
 	stamina_bar.value = stamina
 	stamina_changed.connect(_on_stamina_changed)
 	tag_hitbox.body_entered.connect(_on_tag_hitbox_body_entered)
+	# "player" is the group canopy_fade.gd scans to find whoever this client
+	# controls. The Tubig has always joined it; the Sili never did, so for the
+	# one player being chased ON the Sili the canopies never lifted - they ran
+	# the whole match under solid palm fronds while every Tubig got the fade.
+	# It also meant every canopy layer on the map re-scanned an empty group
+	# once per physics frame looking for a local player it could never find.
+	add_to_group("player")
 	add_to_group("sili")
 
 	# Footsteps run for every character on screen, not just ours - hearing

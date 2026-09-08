@@ -149,7 +149,7 @@ func _ready() -> void:
 	_build_hidden_label()
 	concealment_changed.connect(_on_concealment_changed)
 
-	add_to_group("player")  # keeps compatibility with the canopy fade (over.gd)
+	add_to_group("player")  # the group canopy_fade.gd scans for the local character
 	add_to_group("tubig")
 
 	# Footsteps run for every character on screen, not just ours - hearing

@@ -69,8 +69,16 @@ const STAMINA_DURATION := 10.0
 
 ## Editor + in-game tint for the basin, so "ready" is readable in-world and not
 ## only in the feed. A player looking at the fountain should be able to tell.
-const READY_TINT := Color(0.62, 0.93, 1.0)
-const SPENT_TINT := Color(0.55, 0.58, 0.62)
+##
+## SPENT IS NOT A TINT. It used to be a 0.55 grey multiply, which is a heavy
+## darkening - and since the fountain starts every round uncharged and only
+## fills on the first speed stage at 30s, the first half-minute of every match
+## showed a fountain that looked like unlit or broken art rather than like a
+## prop that was merely empty. Spent is now the sprite exactly as drawn, and
+## READY is a brightening on top of it, so the state that needs to catch your
+## eye is the one that stands out instead of the resting state being punished.
+const READY_TINT := Color(0.80, 1.25, 1.45)
+const SPENT_TINT := Color(1.0, 1.0, 1.0)
 
 signal charged_changed(is_charged: bool)
 
@@ -250,7 +258,9 @@ func _rpc_apply_buff(peer_id: int, kind_index: int, amount: int) -> void:
 	# function already runs on every peer, so routing the line through another
 	# RPC would print it once per peer on every screen.
 	MatchManager.event_logged.emit(
-		"%s drank: %s" % [_name_of(peer_id), _describe(kind_index, amount)], "buff")
+		"%s drank: %s" % [
+			MatchManager.tubig_name(_name_of(peer_id)),
+			_describe(kind_index, amount)], "buff")
 
 
 func _describe(kind: int, amount: int) -> String:
@@ -265,12 +275,28 @@ func _describe(kind: int, amount: int) -> String:
 	return "a blessing"
 
 
-## Tints the basin itself rather than the whole node, so the "over" canopy tile
-## keeps its own colour and the fade shader has nothing fighting it.
+## Tints BOTH halves of the prop.
+##
+## Only "bottom" used to be tinted, so the basin lit up when a drink was ready
+## while the top of the fountain stayed flat - one object visibly rendered in
+## two different states. Tinting both makes the whole prop change together.
+##
+## The alpha of the top layer is NOT ours to set. canopy_fade.gd owns it, and
+## writes modulate.a every physics tick to lift the canopy off a player standing
+## underneath. So this writes RGB only and keeps whatever alpha the fade has
+## reached - stamping a full Color here would flatten the fade to opaque on
+## every state change, which is a flicker exactly when someone is stood under it.
 func _apply_tint() -> void:
-	var basin := get_node_or_null("bottom") as CanvasItem
-	if basin != null:
-		basin.modulate = READY_TINT if is_charged else SPENT_TINT
+	var tint := READY_TINT if is_charged else SPENT_TINT
+	_tint_layer("bottom", tint)
+	_tint_layer("top", tint)
+
+
+func _tint_layer(layer_name: String, tint: Color) -> void:
+	var layer := get_node_or_null(layer_name) as CanvasItem
+	if layer == null:
+		return
+	layer.modulate = Color(tint.r, tint.g, tint.b, layer.modulate.a)
 
 
 func _name_of(peer_id: int) -> String:

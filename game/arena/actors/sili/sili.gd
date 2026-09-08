@@ -108,7 +108,21 @@ func _physics_process(delta: float) -> void:
 
 # --- Tagging ---
 
+## AUTHORITY ONLY.
+##
+## TagHitbox is a real Area2D and it exists in every peer's copy of the Sili, so
+## body_entered fired on all of them - and each one then broadcast its own
+## "tagged" line to everybody. The feed showed the same tag once per peer in the
+## match, which is why it read as a doubled name with two players and would have
+## been five lines with five.
+##
+## Only the machine actually driving the Sili may claim a hit. That is also the
+## rule heat_status.gd's request_ignite() already assumes: it verifies the
+## SENDER is the Sili, so the extra copies were being rejected there anyway -
+## they just made noise in the feed on the way.
 func _on_tag_hitbox_body_entered(body: Node2D) -> void:
+	if multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
+		return
 	_try_tag(body)
 
 
@@ -134,15 +148,19 @@ func _try_tag(body: Node2D) -> void:
 
 	_tag_cooldowns[body] = TAG_RETRY_COOLDOWN
 	tagged_target.emit(body)
-	# Positional, and played on the tagged player's position rather than the
-	# Sili's: a nearby Tubig hearing this needs to know where their teammate
-	# just went down, which is the information worth having.
-	AudioManager.play_sfx_at("tag", body.global_position)
-	# "Ang anghang!!" layered on top of the mechanical tag sfx, at the same
-	# place. The synth hit carries the timing; the voice carries the identity.
-	# AudioManager gates it, so four tags in one scramble give one shout.
-	AudioManager.play_callout("anghang", body.global_position)
-	MatchManager.broadcast_event("Sili tagged %s" % _name_of(body), "tag")
+	# The tag sfx and the "Ang anghang!!" callout used to fire here. They now
+	# live on tubig.gd's _on_heat_state_changed, which runs on EVERY peer off
+	# the replicated state - so bystanders still hear a teammate go down, which
+	# they would have lost the moment this function became authority-only. It
+	# also means the sound only plays for a tag the server actually accepted,
+	# rather than optimistically on contact.
+	#
+	# The Sili is named now instead of being called "Sili": with the role
+	# rotating every round, "who caught them" is the interesting half of the
+	# line, and the colour already says which side each name is on.
+	MatchManager.broadcast_event("%s tagged %s" % [
+		MatchManager.sili_name(_own_name()),
+		MatchManager.tubig_name(_name_of(body))], "tag")
 
 
 func _update_tag_cooldowns(delta: float) -> void:
@@ -212,3 +230,7 @@ func _name_of(character: Node) -> String:
 		return "a Tubig"
 	var peer_id := character.get_multiplayer_authority()
 	return NetworkManager.players.get(peer_id, "Tubig")
+
+
+func _own_name() -> String:
+	return NetworkManager.players.get(get_multiplayer_authority(), "Sili")

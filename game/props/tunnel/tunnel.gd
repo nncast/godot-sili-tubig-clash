@@ -28,7 +28,7 @@ class_name Tunnel
 ## Where the traveller is dropped, relative to the far mouth. Nudge this out of
 ## the wall the tunnel is cut into, otherwise players arrive inside collision
 ## and get shoved somewhere unpredictable by the next move_and_slide().
-@export var exit_offset: Vector2 = Vector2(0, 20):
+@export var exit_offset: Vector2 = Vector2(0, 0):
 	set(value):
 		exit_offset = value
 		queue_redraw()

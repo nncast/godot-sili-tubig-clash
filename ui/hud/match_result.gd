@@ -37,6 +37,8 @@ var _replay_button: Button
 var _title_button: Button
 var _hint_label: Label
 var _fade_tween: Tween
+var _slow_tween: Tween
+var _leaving: bool = false
 var _standings_panel: PanelContainer
 var _standings_rows: VBoxContainer
 var _standings_title: Label
@@ -52,6 +54,11 @@ func _ready() -> void:
 	_build_ui()
 
 	MatchManager.match_ended.connect(_on_match_ended)
+	# The lobby can empty out while this screen is up - that is exactly when
+	# people quit - so the buttons have to keep up with it rather than being
+	# decided once when the match ended.
+	NetworkManager.player_list_changed.connect(_on_player_list_changed)
+	NetworkManager.server_disconnected.connect(_on_server_disconnected)
 	# The scores arrive from the server a moment AFTER the match-ended signal,
 	# so redrawing only in _on_match_ended would leave every client showing
 	# last round's table. Listening to both means the host sees it instantly
@@ -147,24 +154,7 @@ func _on_match_ended(sili_won: bool) -> void:
 	# Only the host can advance the series - a client pressing this would be
 	# reassigning roles for a lobby it doesn't own. Clients get told to wait
 	# instead of being handed a button that quietly does nothing.
-	var can_advance := NetworkManager.is_host() or not multiplayer.has_multiplayer_peer()
-	var series_done: bool = SeriesManager.is_active and SeriesManager.series_complete()
-
-	if not SeriesManager.is_active:
-		_replay_button.text = "Play Again"
-	elif series_done:
-		_replay_button.text = "Back to Lobby"
-	else:
-		_replay_button.text = "Next Round (%d/%d)" % [
-			SeriesManager.round_number(), SeriesManager.rounds_total()]
-
-	_replay_button.visible = can_advance
-	if can_advance:
-		_hint_label.text = ""
-	elif series_done:
-		_hint_label.text = "Series complete. Waiting for the host..."
-	else:
-		_hint_label.text = "Waiting for the host to start the next round..."
+	_refresh_advance_controls()
 
 	visible = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -181,6 +171,74 @@ func _on_match_ended(sili_won: bool) -> void:
 	_fade_tween.tween_property(_backdrop, "color:a", BACKDROP_ALPHA, 0.45)
 
 
+## The state of the two buttons, recomputed from scratch. Called when the match
+## ends and again every time the player list changes, because someone leaving
+## can turn a startable round into an unstartable one while this screen is up.
+func _refresh_advance_controls() -> void:
+	var offline := not multiplayer.has_multiplayer_peer()
+	var can_advance := NetworkManager.is_host() or offline
+	var series_done: bool = SeriesManager.is_active and SeriesManager.series_complete()
+
+	if not SeriesManager.is_active:
+		_replay_button.text = "Play Again"
+	elif series_done:
+		_replay_button.text = "Back to Lobby"
+	else:
+		_replay_button.text = "Next Round (%d/%d)" % [
+			SeriesManager.round_number(), SeriesManager.rounds_total()]
+
+	_replay_button.visible = can_advance
+
+	if not can_advance:
+		_replay_button.disabled = true
+		if series_done:
+			_hint_label.text = "Series complete. Waiting for the host..."
+		else:
+			_hint_label.text = "Waiting for the host to start the next round..."
+		return
+
+	# Going back to the lobby always works - there is nothing to fill. Only
+	# starting play needs bodies.
+	var blocked := "" if (offline or series_done) else NetworkManager.round_blocked_reason()
+	_replay_button.disabled = not blocked.is_empty()
+	_hint_label.text = blocked
+
+	# Alone in the lobby there is nothing here but a dead button, so say so and
+	# leave rather than making them find the other one.
+	if not offline and NetworkManager.players.size() <= 1:
+		_hint_label.text = "Everyone else has left. Returning to the title..."
+		_leave_to_title_soon()
+
+
+func _on_player_list_changed() -> void:
+	if visible:
+		_refresh_advance_controls()
+
+
+## The host vanished. There is no round to wait for and no lobby to return to,
+## so this is not a choice worth offering.
+func _on_server_disconnected() -> void:
+	if not visible:
+		return
+	_hint_label.text = "The host left the game. Returning to the title..."
+	_replay_button.disabled = true
+	_leave_to_title_soon()
+
+
+func _leave_to_title_soon() -> void:
+	if _leaving:
+		return
+	_leaving = true
+	_restore_time_scale()
+	# ignore_time_scale: this can fire while the slow-motion ramp is still on,
+	# and a three-second wait would become twelve.
+	await get_tree().create_timer(2.5, true, false, true).timeout
+	if not is_inside_tree():
+		return
+	NetworkManager.leave_game()
+	LoadingScreen.change_scene("res://ui/title_screen/title_screen.tscn")
+
+
 ## Whose side the person at this screen is on. Falls back to Tubig for an
 ## offline test session, where there are no assigned roles at all.
 func _local_role() -> String:
@@ -192,7 +250,10 @@ func _local_role() -> String:
 ## Eased rather than snapped: the moment of the tag reads better if the world
 ## drags to a halt over a beat instead of stuttering into it.
 func _start_slow_motion() -> void:
+	if _slow_tween and _slow_tween.is_valid():
+		_slow_tween.kill()
 	var tween := create_tween()
+	_slow_tween = tween
 	tween.set_ignore_time_scale(true)
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	# tween_method rather than tween_property: Engine is an engine singleton,
@@ -205,26 +266,64 @@ func _set_time_scale(value: float) -> void:
 	Engine.time_scale = value
 
 
+## Kills the ramp BEFORE resetting the scale, not after.
+##
+## The ramp runs for SLOW_MOTION_RAMP seconds with ignore_time_scale set, so it
+## keeps writing Engine.time_scale on its own schedule. Anyone who hit a button
+## inside that window - which is the normal case, the buttons appear as the ramp
+## starts - had their reset immediately overwritten by the next tween step, and
+## carried 0.25x speed into the scene change. It self-healed when _exit_tree
+## fired and killed the tween with the node, but everything in between ran at a
+## quarter speed, which is exactly the "why is Play Again so slow" feeling.
 func _restore_time_scale() -> void:
+	if _slow_tween and _slow_tween.is_valid():
+		_slow_tween.kill()
 	Engine.time_scale = 1.0
 
 
 ## Three different jobs behind one button, because from the player's side it is
 ## always just "the thing that happens next".
+## Every branch here leaves the arena, and leaving the arena means tearing down
+## the map and rebuilding a scene - so every branch goes behind the curtain.
+## Only the two that advance a networked round used to, because those route
+## through NetworkManager._rpc_load_arena; the offline replay and the trip back
+## to the lobby froze in place with the results still on screen.
 func _on_replay_pressed() -> void:
 	_restore_time_scale()
 
+	# Refuse rather than lock up. start_practice_match() and start_next_round()
+	# both return silently when the lobby is too small, so pressing this after
+	# someone quit did nothing at all - and with the button disabled below,
+	# nothing at all for good.
+	#
+	# The end-of-series branch is exempt: it goes back to the LOBBY, which has
+	# no size requirement, and gating it would strand the host on the results
+	# screen with no way out but the title.
+	var series_done: bool = SeriesManager.is_active and SeriesManager.series_complete()
+	var blocked := "" if series_done else NetworkManager.round_blocked_reason()
+	if NetworkManager.is_host() and not blocked.is_empty():
+		_hint_label.text = blocked
+		_replay_button.disabled = true
+		return
+
+	# Pressed once. The scene swap is deferred by a few frames behind the
+	# curtain, which is a wide enough window to get a second press in, and a
+	# second start_next_round() would skip a round of the rotation.
+	_replay_button.disabled = true
+
 	if not NetworkManager.is_host():
 		# Offline session - nothing to coordinate, just run the level again.
-		get_tree().reload_current_scene()
+		LoadingScreen.reload_scene()
 		return
 
 	if SeriesManager.is_active and SeriesManager.series_complete():
 		# The set is over. Back to the lobby with the standings intact, so the
 		# table stays readable while people decide whether to run another.
-		get_tree().change_scene_to_file("res://ui/lobby/lobby.tscn")
+		LoadingScreen.change_scene("res://ui/lobby/lobby.tscn")
 	elif SeriesManager.is_active:
 		# Hands the Sili role to the next player in the fixed rotation.
+		# NetworkManager raises the curtain itself, on every peer rather than
+		# only on the host who pressed the button.
 		NetworkManager.start_next_round()
 	else:
 		NetworkManager.start_practice_match()
@@ -232,8 +331,9 @@ func _on_replay_pressed() -> void:
 
 func _on_title_pressed() -> void:
 	_restore_time_scale()
+	_title_button.disabled = true
 	NetworkManager.leave_game()
-	get_tree().change_scene_to_file("res://ui/title_screen/title_screen.tscn")
+	LoadingScreen.change_scene("res://ui/title_screen/title_screen.tscn")
 
 
 # --- Series standings ---

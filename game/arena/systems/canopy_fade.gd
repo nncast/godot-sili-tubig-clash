@@ -1,43 +1,67 @@
 extends TileMapLayer
 
-## Attach to the "over" TileMapLayers - the tree canopies and building roofs
-## drawn at z_index 21, above the players.
+## Attach to the overhead TileMapLayers - the tree canopies, umbrellas, fountain
+## tops and building roofs drawn at z_index 21, above the players. Maps name
+## theirs "over"; prop scenes name theirs "top", paired with a "bottom".
 ##
 ## Those layers sit in front of characters so you can walk behind a palm or
 ## under a roof. Without this they would hide you forever, since nothing ever
 ## gets out of the way.
 ##
-## WHY THIS IS A SHADER AND NOT modulate.a
+## WHOLE VS THE MASKED MODES
 ##
 ## modulate belongs to the whole CanvasItem, and a TileMapLayer is one
-## CanvasItem - so fading through it fades EVERY tree in the layer at once, not
-## the one you happen to be standing under. There is no per-cell alpha on a
-## tilemap. The only ways to give individual canopies their own alpha are to
-## turn each one into a node (a few hundred extra nodes, and they drop out of
-## the mini-map bake, which walks TileMapLayers) or to mask in the fragment
-## stage. This does the second.
+## CanvasItem - so fading through it fades every tile in that layer at once.
+##
+## For a PROP that is fine, and it is what WHOLE does. palm.tscn, the umbrellas
+## and the fountain each own their "top" layer outright: one object, one layer,
+## so "fade the layer" and "fade the object" mean the same thing. No shader, no
+## flood fill, no coordinate spaces to get wrong.
+##
+## The masked modes exist for a MAP-WIDE layer that holds many separate canopies
+## in one CanvasItem, where fading the layer would lift every tree on the map.
+## No map currently ships one - boracay builds its canopies out of prop scenes -
+## so WHOLE is the default and the masked modes are for later.
+##
+## WHY THE MASK USED TO FADE EXACTLY ONE TILE
+##
+## The mask was written against `VERTEX`, on the assumption that it is in the
+## layer's own space. It is not. TileMapLayer renders in QUADRANTS
+## (rendering_quadrant_size, 16 tiles by default), and each quadrant is a
+## separate canvas item with its own transform - so VERTEX is quadrant-local.
+## The rect handed to the shader was built with map_to_local(), which is
+## layer-local. The two only agree inside quadrant (0, 0).
+##
+## The palm's canopy is 15 cells spanning quadrants (-1,-1), (-1,0), (0,-1) and
+## (0,0), so the only part that ever satisfied the rect test was the single cell
+## sitting at the layer origin: one 16x16 tile out of a 64x64 canopy. Both the
+## shader and this script now work in GLOBAL space, which is the one space every
+## quadrant agrees on.
 ##
 ## ONLY the locally controlled character triggers the fade. That is a gameplay
 ## rule, not an optimisation: in a hide-and-seek game, a roof going transparent
 ## because a *remote* player walked under it would broadcast their position to
 ## everyone looking at that part of the map.
 
+## NOTE: WHOLE was added at index 0, so the stored numbers shifted. Any scene
+## that still reads `fade_mode = 0` now means WHOLE, which is the correct answer
+## for every prop that had it. CLUSTER is 1 from here on.
 enum FadeMode {
-	## Fade the whole connected clump of tiles the player is under, found by a
-	## flood fill. Correct for a lone palm or a single roof: the object lifts as
-	## one piece.
+	## Fade the entire layer with modulate.a. Correct whenever the layer IS the
+	## object - which is every prop in the game.
+	WHOLE,
+	## Fade the connected clump of tiles the player is under, found by a flood
+	## fill. For a map-wide layer holding several distinct canopies.
 	CLUSTER,
 	## Fade a soft circle around the player. Correct where the canopy is painted
 	## as one continuous mass and there is no single tree to isolate.
 	RADIAL,
 	## CLUSTER when the clump is small enough to be one object, RADIAL when it
-	## turns out to be a blob. This is the sane default: the same layer can hold
-	## both a few scattered palms and a dense patch, and this picks per contact
-	## rather than per layer.
+	## turns out to be a blob, for a layer that holds both.
 	AUTO,
 }
 
-@export var fade_mode: FadeMode = FadeMode.AUTO
+@export var fade_mode: FadeMode = FadeMode.WHOLE
 
 ## Alpha while you are underneath. Not 0 - a faint canopy reads as "you are
 ## under something", where clearing it fully just looks like the art vanished.
@@ -96,6 +120,12 @@ var _cached_is_blob: bool = false
 
 
 func _ready() -> void:
+	# WHOLE needs no material at all. Skipping it here is not just tidiness:
+	# boracay instances forty-odd palms, and each one used to compile and hold
+	# its own ShaderMaterial to run a mask that only ever covered one tile.
+	if fade_mode == FadeMode.WHOLE:
+		return
+
 	var shader: Shader = load("res://game/arena/systems/canopy_fade.gdshader")
 	if shader == null:
 		push_warning("canopy_fade: shader missing; this layer will not fade.")
@@ -120,12 +150,24 @@ func _physics_process(delta: float) -> void:
 	var seed_cell = _covering_cell()
 	_target_blend = 0.0 if seed_cell == null else 1.0
 
-	if seed_cell != null:
+	if seed_cell != null and fade_mode != FadeMode.WHOLE:
 		_apply_mask(seed_cell)
 
 	if is_equal_approx(_blend, _target_blend):
 		return
 	_blend = move_toward(_blend, _target_blend, fade_speed * delta)
+	_push_blend()
+
+
+## The one place the current blend reaches the screen, so the two rendering
+## paths cannot drift apart.
+func _push_blend() -> void:
+	if fade_mode == FadeMode.WHOLE:
+		# Only the alpha channel, never the colour: the fountain tints its own
+		# layers to show whether it is charged, and stamping a full Color here
+		# would wipe that out every frame.
+		modulate.a = lerpf(1.0, faded_alpha, _blend)
+		return
 	_material.set_shader_parameter("blend", _blend)
 
 
@@ -142,7 +184,7 @@ func _apply_mask(seed_cell: Vector2i) -> void:
 		_cached_seed = seed_cell
 		var cluster := _flood_fill(seed_cell)
 		_cached_is_blob = cluster.size() > max_cluster_cells
-		_cached_rect = _local_rect_for(cluster)
+		_cached_rect = _global_rect_for(cluster)
 
 	if fade_mode == FadeMode.AUTO and _cached_is_blob:
 		_set_radial()
@@ -154,11 +196,12 @@ func _apply_mask(seed_cell: Vector2i) -> void:
 			_cached_rect.size.x, _cached_rect.size.y))
 
 
-## to_local, because the shader reads VERTEX - which is already in this layer's
-## space. Converting here means both sides agree by construction instead of by
-## assumption about how tilemap quads get batched.
+## GLOBAL, not to_local(). The shader converts its VERTEX up to global space
+## with MODEL_MATRIX, because VERTEX on its own is relative to the rendering
+## QUADRANT rather than to the layer - see the note at the top of this file.
+## Global is the only space both sides can agree on.
 func _set_radial() -> void:
-	_material.set_shader_parameter("fade_center", to_local(_local_player.global_position))
+	_material.set_shader_parameter("fade_center", _local_player.global_position)
 	_material.set_shader_parameter("fade_radius", radial_radius)
 
 
@@ -190,11 +233,15 @@ func _flood_fill(start: Vector2i) -> Array:
 	return found
 
 
-## Bounding box of a set of cells, in this layer's local space, expanded to the
-## outer edges of the tiles rather than their centres - map_to_local returns a
-## cell's centre, so a rect built straight from it would clip half a tile off
-## every side of the canopy.
-func _local_rect_for(cells: Array) -> Rect2:
+## Bounding box of a set of cells, in GLOBAL space, expanded to the outer edges
+## of the tiles rather than their centres - map_to_local returns a cell's
+## centre, so a rect built straight from it would clip half a tile off every
+## side of the canopy.
+##
+## Global rather than layer-local because the shader cannot express layer-local:
+## it only ever sees a quadrant. Converting here keeps the conversion in one
+## place instead of leaving the shader to guess.
+func _global_rect_for(cells: Array) -> Rect2:
 	if cells.is_empty():
 		return Rect2()
 
@@ -208,8 +255,8 @@ func _local_rect_for(cells: Array) -> Rect2:
 		max_cell.y = maxi(max_cell.y, cell.y)
 
 	var half := Vector2(tile_set.tile_size) * 0.5
-	var top_left := map_to_local(min_cell) - half
-	var bottom_right := map_to_local(max_cell) + half
+	var top_left := to_global(map_to_local(min_cell) - half)
+	var bottom_right := to_global(map_to_local(max_cell) + half)
 	return Rect2(top_left, bottom_right - top_left)
 
 

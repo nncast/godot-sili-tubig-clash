@@ -110,6 +110,40 @@ func broadcast_event(message: String, kind: String = "info") -> void:
 		_rpc_log_event(message, kind)
 
 
+## --- Feed name colouring ---
+##
+## Feed lines carry BBCode so a name can be coloured inside an otherwise plain
+## sentence: "Ana tagged Ben" reads as red-name / plain-verb / blue-name.
+##
+## The colours are the ones already used for the two sides elsewhere - the
+## spawn markers, the team panel dots, the mini-map - so a name in the feed is
+## the same colour as that player everywhere else on screen. Roles, not
+## individuals: five Tubigs share one blue, because the thing worth telling
+## apart at a glance is which side someone is on.
+##
+## Built here rather than at each call site so the palette lives in one place,
+## and so every caller gets the escaping below for free.
+const FEED_SILI_COLOR := "e6472f"
+const FEED_TUBIG_COLOR := "3d8cf2"
+
+
+static func sili_name(display_name: String) -> String:
+	return "[color=#%s]%s[/color]" % [FEED_SILI_COLOR, escape_bbcode(display_name)]
+
+
+static func tubig_name(display_name: String) -> String:
+	return "[color=#%s]%s[/color]" % [FEED_TUBIG_COLOR, escape_bbcode(display_name)]
+
+
+## Player names are typed by players, and the feed now renders BBCode. A player
+## calling themselves "[color=red]" or "[img]" would otherwise be injecting
+## markup into everyone else's HUD. Escaping the opening bracket is enough -
+## BBCode has no other control character - and "[lb]" is the tag that renders a
+## literal "[", so the name still displays exactly as typed.
+static func escape_bbcode(text: String) -> String:
+	return text.replace("[", "[lb]")
+
+
 func _update_sili_speed_stage() -> void:
 	var elapsed := MATCH_DURATION - time_remaining
 	var stage := 0

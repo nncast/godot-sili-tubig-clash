@@ -30,6 +30,7 @@ const SETTLE_FRAMES := 20
 var _settle := 0
 var _canopy: TileMapLayer = null
 var _sili: Node2D = null
+var _faded_alpha_seen: float = 1.0
 
 
 func _c(label: String, actual: Variant, expected: Variant) -> void:
@@ -87,10 +88,12 @@ func _process(_delta: float) -> void:
 				return
 
 			_c("canopy is above the players", _canopy.z_index, 21)
-			_c("canopy built its own material", _canopy.material is ShaderMaterial, true)
-			_c("faded alpha reached the shader",
-				_canopy.material.get_shader_parameter("faded_alpha"), _canopy.faded_alpha)
 			_c("faded alpha is the lowered value", _canopy.faded_alpha < 0.3, true)
+			# WHOLE needs no ShaderMaterial, and building one anyway would mean
+			# forty-odd compiled materials on boracay doing nothing.
+			_c("prop canopy uses WHOLE", _canopy.fade_mode, 0)
+			_c("WHOLE builds no material", _canopy.material, null)
+			_c("canopy starts fully opaque", _canopy.modulate.a, 1.0)
 
 			# Stand the Sili in the middle of that canopy. Physics has to run
 			# for _physics_process to pick it up, hence the phases.
@@ -106,7 +109,14 @@ func _process(_delta: float) -> void:
 			# assertion is "it moved", not "it arrived".
 			_c("canopy resolved the local Sili", _canopy._local_player, _sili)
 			_c("canopy started fading", _canopy._blend > 0.0, true)
+			# The regression this file exists for: the old shader mask faded
+			# ONE 16x16 tile of a 64x64 canopy, because it compared a
+			# layer-local rect against a quadrant-local VERTEX. WHOLE fades the
+			# layer, so the whole prop lifts and there is no space to mismatch.
+			_c("the whole layer is fading, not one tile",
+				_canopy.modulate.a < 1.0, true)
 
+			_faded_alpha_seen = _canopy.modulate.a
 			_sili.global_position += Vector2(100000, 100000)
 			_phase = 2
 			_settle = SETTLE_FRAMES
@@ -115,8 +125,32 @@ func _process(_delta: float) -> void:
 		2:
 			_c("canopy lets go when the Sili leaves", _canopy._target_blend, 0.0)
 			_c("canopy fades back towards opaque", _canopy._blend < 1.0, true)
+			_c("layer returns towards opaque", _canopy.modulate.a > _faded_alpha_seen, true)
+			_check_every_prop_canopy()
 			_finish()
 			return
+
+
+## Every overhead layer in the loaded map must carry the fade script. The
+## umbrellas shipped with a "top" at z_index 21 and no script at all, so they
+## drew over the player and never moved - the same symptom as the palms, from a
+## different cause, and invisible unless something walks the whole tree.
+func _check_every_prop_canopy() -> void:
+	var missing: Array[String] = []
+	var total := 0
+	for node in _arena.find_children("*", "TileMapLayer", true, false):
+		var layer := node as TileMapLayer
+		if layer == null or String(layer.name) not in ["top", "over"]:
+			continue
+		if layer.get_used_cells().is_empty():
+			continue
+		total += 1
+		if layer.get_script() == null:
+			missing.append(String(_arena.get_path_to(layer)))
+	_c("found overhead layers to check", total > 0, true)
+	if not missing.is_empty():
+		print("        missing the script: %s" % ", ".join(missing.slice(0, 6)))
+	_c("every overhead layer fades", missing.size(), 0)
 
 
 ## The first "top"/"over" layer carrying the fade script that actually has

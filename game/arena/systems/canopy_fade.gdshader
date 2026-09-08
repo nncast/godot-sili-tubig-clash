@@ -20,10 +20,10 @@ shader_type canvas_item;
 //
 // fade_radius > 0.0 selects RADIAL; otherwise RECT.
 
-// World-space box: xy = top-left corner, zw = size.
+// Global-space box: xy = top-left corner, zw = size.
 uniform vec4 fade_rect = vec4(0.0);
 
-// World-space centre and radius for the circular mask.
+// Global-space centre and radius for the circular mask.
 uniform vec2 fade_center = vec2(0.0);
 uniform float fade_radius = 0.0;
 
@@ -42,27 +42,35 @@ uniform float blend : hint_range(0.0, 1.0) = 0.0;
 // Softness of the circular mask's edge, as a fraction of the radius.
 uniform float edge_softness : hint_range(0.0, 1.0) = 0.45;
 
-// Layer-local, not global: passing MODEL_MATRIX-transformed positions works
-// but depends on how the tilemap quads get batched. VERTEX is already in the
-// layer's own space, and GDScript can convert the player's position into that
-// same space with to_local(), so both sides agree by construction.
-varying vec2 local_pos;
+// GLOBAL, via MODEL_MATRIX. The previous version used raw VERTEX on the
+// assumption that it is layer-local. It is not: TileMapLayer draws in
+// quadrants (rendering_quadrant_size, 16 tiles by default) and each quadrant
+// is its own canvas item with its own transform, so VERTEX is QUADRANT-local.
+//
+// The rect came in layer-local, so the two spaces only agreed inside quadrant
+// (0, 0) - which is why a 64x64 palm canopy straddling four quadrants faded
+// exactly the one 16x16 tile sitting at the layer origin.
+//
+// MODEL_MATRIX is the transform of the canvas item actually being drawn, so it
+// already carries the quadrant offset. Multiplying through it lands every
+// quadrant in the same global space GDScript measures in.
+varying vec2 global_pos;
 
 void vertex() {
-	local_pos = VERTEX;
+	global_pos = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy;
 }
 
 void fragment() {
 	float mask;
 
 	if (fade_radius > 0.0) {
-		float d = distance(local_pos, fade_center);
+		float d = distance(global_pos, fade_center);
 		mask = 1.0 - smoothstep(fade_radius * (1.0 - edge_softness), fade_radius, d);
 	} else {
 		vec2 lo = fade_rect.xy;
 		vec2 hi = fade_rect.xy + fade_rect.zw;
-		bool inside = local_pos.x >= lo.x && local_pos.x <= hi.x
-		           && local_pos.y >= lo.y && local_pos.y <= hi.y;
+		bool inside = global_pos.x >= lo.x && global_pos.x <= hi.x
+		           && global_pos.y >= lo.y && global_pos.y <= hi.y;
 		mask = inside ? 1.0 : 0.0;
 	}
 

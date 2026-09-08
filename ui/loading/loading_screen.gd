@@ -145,6 +145,23 @@ func change_scene(scene_path: String, preload_paths: Array = [], label: String =
 	_busy = false
 
 
+## Rebuilds the scene that is currently on screen, behind the curtain.
+##
+## The end-of-match overlay's "Play Again" used to call
+## get_tree().reload_current_scene() directly, which tears down and rebuilds the
+## arena - forty-odd props, the map, and the mini-map bake - on the main thread
+## with nothing covering it. Same freeze as entering the arena the first time,
+## for the same reason, so it gets the same curtain.
+func reload_scene(label: String = "Loading") -> void:
+	var scene := get_tree().current_scene
+	if scene == null or scene.scene_file_path.is_empty():
+		# Nothing on disk to reload from (a scene built in code, or a test
+		# harness). Fall back rather than silently doing nothing.
+		get_tree().reload_current_scene()
+		return
+	change_scene(scene.scene_file_path, [], label)
+
+
 ## Loads one resource on a worker thread, yielding a frame at a time so the
 ## runners keep animating. Returns null if the load failed.
 func _load_threaded(path: String) -> Resource:
@@ -171,6 +188,11 @@ func _load_threaded(path: String) -> Resource:
 
 func _fade_out() -> void:
 	var tween := create_tween()
+	# The result overlay drops Engine.time_scale to 0.25 for its slow-motion
+	# finish. It restores it before advancing, but a dropped frame or an early
+	# exit path can leave the slowdown in place for a moment - and a fade that
+	# inherits it takes a second to clear instead of a quarter of one.
+	tween.set_ignore_time_scale(true)
 	tween.tween_property(_root, "modulate:a", 0.0, FADE_OUT_TIME)
 	await tween.finished
 	_set_visible(false)

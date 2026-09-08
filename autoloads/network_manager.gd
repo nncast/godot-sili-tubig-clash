@@ -46,6 +46,9 @@ signal match_starting
 signal lobby_code_ready(code: String)
 signal code_lookup_failed
 signal discovery_unavailable  # host couldn't open the discovery port
+## Someone dropped out. Carries the name because by the time listeners run, the
+## peer is already out of `players` and there is nothing left to look it up by.
+signal player_left(peer_id: int, display_name: String)
 
 var players: Dictionary = {}  # peer_id (int) -> display name (String)
 var roles: Dictionary = {}    # peer_id (int) -> "sili" or "tubig"
@@ -317,12 +320,57 @@ func _on_peer_connected(_id: int) -> void:
 	pass  # wait for their register_player() RPC so we know their chosen name
 
 
+## Fires on EVERY peer, not just the host - Godot notifies all of them when
+## someone drops - so the feed line is emitted locally rather than broadcast.
+## Routing it through MatchManager.broadcast_event would send one copy per peer
+## and print the same departure four times on every screen.
 func _on_peer_disconnected(id: int) -> void:
-	if players.has(id):
-		players.erase(id)
-		if is_host():
-			_rpc_update_player_list.rpc(players)
-		player_list_changed.emit()
+	if not players.has(id):
+		return
+
+	var who: String = players[id]
+	var was_sili: bool = roles.get(id, "") == "sili"
+	players.erase(id)
+	roles.erase(id)
+
+	if is_host():
+		_rpc_update_player_list.rpc(players)
+	player_list_changed.emit()
+
+	MatchManager.event_logged.emit("%s left the game" % (
+		MatchManager.sili_name(who) if was_sili else MatchManager.tubig_name(who)), "warning")
+	player_left.emit(id, who)
+
+
+## Whether the host could start another round right now.
+##
+## The lobby, the end-of-match overlay and start_practice_match() were each
+## deciding this for themselves, and the overlay's copy was simply missing -
+## it offered "Play Again" no matter how many people had left, then called a
+## function that refused and returned silently. The button appeared to do
+## nothing, which reads as the game having frozen.
+func can_start_another_round() -> bool:
+	if not is_host():
+		return false
+	if SeriesManager.is_active and not SeriesManager.series_complete():
+		# A series is balanced for a full lobby; losing anyone ends it rather
+		# than quietly playing the remaining rounds at the wrong size.
+		return players.size() == MATCH_SIZE
+	return players.size() >= MIN_PRACTICE_PLAYERS
+
+
+## Why can_start_another_round() said no, phrased for a player. Empty when it
+## said yes.
+func round_blocked_reason() -> String:
+	if not is_host():
+		return ""
+	if SeriesManager.is_active and not SeriesManager.series_complete():
+		if players.size() != MATCH_SIZE:
+			return "Series needs %d players - %d left." % [MATCH_SIZE, players.size()]
+		return ""
+	if players.size() < MIN_PRACTICE_PLAYERS:
+		return "Not enough players to start another round."
+	return ""
 
 
 # --- Peer lifecycle (client side) ---

@@ -323,8 +323,13 @@ func _complete_rescue() -> void:
 				target_heat.cool_fully()
 		_send_rescue_progress(_rescue_target, 0.0, 0.0)
 
+	# Both names are Tubig blue - same side, and the line is about the team
+	# doing something for itself. Only _physics_process reaches here and that
+	# returns early off-authority, so this fires once, on the rescuer's client.
 	MatchManager.broadcast_event(
-		"%s rescued %s" % [_own_name(), _name_of(_rescue_target)], "rescue")
+		"%s rescued %s" % [
+			MatchManager.tubig_name(_own_name()),
+			MatchManager.tubig_name(_name_of(_rescue_target))], "rescue")
 
 	_cancel_rescue_channel()
 
@@ -778,6 +783,17 @@ func _update_hearts(lives_remaining: int) -> void:
 func _on_heat_state_changed(new_state: HeatStatus.State) -> void:
 	if new_state == HeatStatus.State.BURNING:
 		animated_sprite.play("heat_" + last_direction)
+		# Moved here from sili.gd's _try_tag. That function is authority-only
+		# now (it was broadcasting one feed line per peer), and leaving the
+		# audio there would have meant only the Sili's own machine heard a tag.
+		#
+		# Positional, on the tagged player rather than on the Sili: a nearby
+		# Tubig needs to know where their teammate just went down.
+		AudioManager.play_sfx_at("tag", global_position)
+		# "Ang anghang!!" over the mechanical hit. The synth carries the timing,
+		# the voice carries the identity. AudioManager gates it, so four tags in
+		# one scramble give one shout.
+		AudioManager.play_callout("anghang", global_position)
 	elif new_state == HeatStatus.State.DEAD:
 		AudioManager.play_sfx_at("eliminated", global_position)
 	elif new_state == HeatStatus.State.NORMAL:

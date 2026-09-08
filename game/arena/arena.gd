@@ -84,9 +84,15 @@ func _ready() -> void:
 	tubig_spawner.spawn_function = _spawn_tubig
 	sili_spawner.spawned.connect(_on_player_spawned)
 	tubig_spawner.spawned.connect(_on_player_spawned)
+	# Despawn matters as much as spawn. Without it the team panel keeps a row
+	# for a player who is no longer in the match, with a status dot that will
+	# never change again.
+	sili_spawner.despawned.connect(_on_player_despawned)
+	tubig_spawner.despawned.connect(_on_player_despawned)
 
 	MatchManager.time_updated.connect(_on_time_updated)
 	MatchManager.match_ended.connect(_on_match_ended)
+	NetworkManager.player_left.connect(_on_player_left)
 
 	_setup_settings_popup()
 
@@ -252,6 +258,55 @@ func _build_player(data: Dictionary) -> Node:
 ## unconfigured.
 func _on_player_spawned(_node: Node) -> void:
 	_refresh_team_state()
+
+
+## Deferred: this fires while the spawner is removing the node, so the node is
+## still in the tree and would still be counted by get_nodes_in_group().
+func _on_player_despawned(_node: Node) -> void:
+	call_deferred("_refresh_team_state")
+
+
+## Someone quit. Their character does NOT leave with them - the server spawned
+## it, so nothing on the network takes it away - and a body left standing there
+## is not just cosmetic:
+##
+##   - _check_for_sili_win reads it as a Tubig still on their feet, so the Sili
+##     can never win. The match then always runs the full clock out, which is
+##     the "it just hangs after someone leaves" symptom.
+##   - Nobody can control it, so it cannot be tagged into a state that would
+##     release the match either. It simply stands in the sand.
+##
+## Freeing it on the server despawns it everywhere, because MultiplayerSpawner
+## replicates the removal of anything it spawned.
+func _on_player_left(peer_id: int, display_name: String) -> void:
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		return
+
+	var was_sili: bool = false
+	# Typed explicitly: an untyped array literal yields Variant elements, and
+	# get_node_or_null() on a Variant has no inferable return type.
+	var containers: Array[Node2D] = [sili_container, tubig_container]
+	for container in containers:
+		var body: Node = container.get_node_or_null("player_%d" % peer_id)
+		if body == null:
+			continue
+		was_sili = body.is_in_group("sili")
+		container.remove_child(body)
+		body.queue_free()
+
+	_refresh_team_state()
+
+	# A match with no Sili has nobody who can end it. Letting the clock run out
+	# gets to the same verdict three minutes later, having made four people
+	# stand around to watch it happen.
+	if was_sili and MatchManager.is_running:
+		MatchManager.broadcast_event(
+			"%s was the Sili - the round is over." % MatchManager.sili_name(display_name),
+			"warning")
+		MatchManager.end_match(false)
+		return
+
+	_check_for_sili_win()
 
 
 func _refresh_team_state() -> void:

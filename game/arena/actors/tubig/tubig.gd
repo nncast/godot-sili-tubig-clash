@@ -98,7 +98,6 @@ var _hidden_label: Label = null
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ui_layer: CanvasLayer = $ui
 @onready var stamina_bar: ProgressBar = $ui/StaminaBar
-@onready var rescue_bar: ProgressBar = $ui/RescueBar
 @onready var hearts: Array = [$ui/HeartsRow/Heart1, $ui/HeartsRow/Heart2, $ui/HeartsRow/Heart3]
 @onready var heat_status: HeatStatus = $HeatStatus
 @onready var interaction_area: Area2D = $InteractionArea

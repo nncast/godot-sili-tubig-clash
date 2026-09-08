@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tools/test_leaderboard_and_audio.gd" id="1_lb"]
+
+[node name="TestLeaderboardAndAudio" type="Node"]
+script = ExtResource("1_lb")

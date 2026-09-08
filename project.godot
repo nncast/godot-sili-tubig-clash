@@ -29,6 +29,10 @@ GameSettings="*res://autoloads/game_settings.gd"
 SightingTracker="*res://autoloads/sighting_tracker.gd"
 AudioManager="*res://autoloads/audio_manager.gd"
 SeriesManager="*res://autoloads/series_manager.gd"
+; Listed after SeriesManager: Leaderboard connects to its series_finished
+; signal in _ready(), so that node has to exist first. Autoloads are added in
+; the order they appear here.
+Leaderboard="*res://autoloads/leaderboard.gd"
 
 [display]
 

@@ -279,6 +279,9 @@ func _on_player_despawned(_node: Node) -> void:
 ## Freeing it on the server despawns it everywhere, because MultiplayerSpawner
 ## replicates the removal of anything it spawned.
 func _on_player_left(peer_id: int, display_name: String) -> void:
+	# NetworkManager outlives the arena, so this signal can arrive mid-teardown.
+	if not is_inside_tree():
+		return
 	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 		return
 
@@ -310,6 +313,15 @@ func _on_player_left(peer_id: int, display_name: String) -> void:
 
 
 func _refresh_team_state() -> void:
+	# This used to be reachable only from the spawner's `spawned` signal, which
+	# can only fire while the arena is in the tree. It now also arrives from a
+	# DEFERRED despawn and from NetworkManager.player_left, and both of those
+	# can land after the arena has been pulled out of the tree - a player
+	# quitting during the scene change into the next round is enough. get_tree()
+	# is null at that point, so every read below would fail.
+	if not is_inside_tree():
+		return
+
 	var previous_count := _tubig_players.size()
 	_tubig_players = get_tree().get_nodes_in_group("tubig")
 

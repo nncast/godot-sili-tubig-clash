@@ -87,6 +87,19 @@ const DANGER_DB := -14.0
 ## and lets the tension hang for a beat after you think you've lost them.
 const DANGER_FADE_IN := 0.6
 const DANGER_FADE_OUT := 2.0
+
+## Where the main track sits while the danger sting is up.
+##
+## MIN_DB, so it goes fully out rather than just quieter: the two tracks are
+## written in different keys and stacking them was muddy - you could hear that
+## something had changed without being able to hear WHAT. Out and back is a
+## cleaner read, and it makes the chase feel like its own moment rather than a
+## layer on top of the normal one.
+##
+## The voice is never STOPPED, only silenced, so the loop keeps advancing
+## underneath and fading back in resumes mid-phrase instead of snapping to the
+## top of the track every time a Sili wanders off.
+const MUSIC_DUCKED_DB := GameSettings.MIN_DB
 ## Music sits well under the game now - background texture, not a score.
 ## Footsteps and the ocean are the cues that carry information in a game about
 ## hearing where someone is, so the music has to leave room for them.
@@ -108,6 +121,8 @@ var _current_track: AudioStream = null
 var _fade_tween: Tween
 
 var _danger_music: AudioStreamPlayer
+var _music_ducked: bool = false
+var _duck_tween: Tween
 var _danger_tween: Tween
 var _danger_active := false
 
@@ -222,6 +237,12 @@ func _crossfade_to(stream: AudioStream) -> void:
 	var incoming := _music_b if _active_music == _music_a else _music_a
 	_active_music = incoming
 
+	# The duck tween is writing volume_db on a player this swap is about to
+	# take over. Two tweens on one property means the level lands wherever the
+	# later one happens to run.
+	if _duck_tween and _duck_tween.is_valid():
+		_duck_tween.kill()
+
 	if _fade_tween and _fade_tween.is_valid():
 		_fade_tween.kill()
 	_fade_tween = create_tween()
@@ -231,7 +252,11 @@ func _crossfade_to(stream: AudioStream) -> void:
 		incoming.stream = stream
 		incoming.volume_db = GameSettings.MIN_DB
 		incoming.play()
-		_fade_tween.tween_property(incoming, "volume_db", MUSIC_DB, CROSSFADE_TIME)
+		# _music_target_db, not MUSIC_DB: changing scene while the chase sting
+		# is up must not bring the new track in at full level over the top of
+		# it. The duck survives the swap.
+		_fade_tween.tween_property(
+			incoming, "volume_db", _music_target_db(), CROSSFADE_TIME)
 
 	if outgoing.playing:
 		_fade_tween.tween_property(outgoing, "volume_db", GameSettings.MIN_DB, CROSSFADE_TIME)
@@ -246,9 +271,10 @@ func _crossfade_to(stream: AudioStream) -> void:
 ## call every frame: a repeat call while it's already up does nothing, so the
 ## caller can just describe the situation rather than track edges itself.
 ##
-## Deliberately a LAYER and not a crossfade. Swapping tracks would mean the
-## in-game music restarting from the top every time a Sili wanders past, and
-## would fight _crossfade_to for the same two voices.
+## Still a LAYER rather than a track swap - swapping would restart the in-game
+## music from the top every time a Sili wanders past, and would fight
+## _crossfade_to for the same two voices. What it does now is DUCK: the main
+## track fades out as the sting fades in, and back in as the sting leaves.
 func start_danger_music() -> void:
 	if _danger_active:
 		return
@@ -274,6 +300,8 @@ func start_danger_music() -> void:
 		_danger_music.play()
 
 	_fade_danger_to(DANGER_DB, DANGER_FADE_IN)
+	# Same duration, so the two cross rather than leaving a gap or a pile-up.
+	_set_music_ducked(true, DANGER_FADE_IN)
 
 
 ## Fades the sting out and stops the voice once it's silent. Also safe to call
@@ -282,6 +310,10 @@ func stop_danger_music() -> void:
 	if not _danger_active:
 		return
 	_danger_active = false
+	# Unducked BEFORE the early return below: the main track has to come back
+	# even in the case where the sting was never actually playing, or a missing
+	# danger file would leave the game permanently silent.
+	_set_music_ducked(false, DANGER_FADE_OUT)
 	if _danger_music == null or not _danger_music.playing:
 		return
 	_fade_danger_to(GameSettings.MIN_DB, DANGER_FADE_OUT)
@@ -310,6 +342,40 @@ func kill_danger_music() -> void:
 		_danger_tween.kill()
 	if _danger_music:
 		_danger_music.stop()
+	# Immediate, not faded: this is for leaving the arena, and the results
+	# screen should not open under a track that is still climbing back up.
+	_set_music_ducked(false, 0.0)
+
+
+## Fades the main music out from under the danger sting, and back in after it.
+##
+## One tween, killed on replacement, for the same reason _fade_danger_to has
+## one: a duck starting mid-unduck otherwise leaves two tweens writing the same
+## property in the same frame.
+func _set_music_ducked(ducked: bool, duration: float) -> void:
+	if _music_ducked == ducked:
+		return
+	_music_ducked = ducked
+
+	if _duck_tween and _duck_tween.is_valid():
+		_duck_tween.kill()
+
+	if _active_music == null:
+		return
+
+	if duration <= 0.0:
+		_active_music.volume_db = _music_target_db()
+		return
+
+	_duck_tween = create_tween()
+	_duck_tween.tween_property(
+		_active_music, "volume_db", _music_target_db(), duration)
+
+
+## Where the main music belongs right now. Read by both the duck and the
+## crossfade so the two cannot disagree about the current level.
+func _music_target_db() -> float:
+	return MUSIC_DUCKED_DB if _music_ducked else MUSIC_DB
 
 
 ## Handle music looping - when a track finishes, restart it if it's still

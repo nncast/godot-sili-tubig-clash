@@ -80,13 +80,28 @@ func _build() -> void:
 ## Called by the arena once it knows which character belongs to this screen.
 ## The Sili is never eliminated, so only a Tubig is ever wired up here.
 func watch_local_player(body: Node2D) -> void:
+	# Idempotent. The arena re-runs its HUD wiring on every spawn AND now on
+	# every DEPARTURE too, so this is called repeatedly with the same body -
+	# and connecting an already-connected signal is an error, not a no-op.
+	if body == _own_body and body != null:
+		return
+
+	# Changing bodies (a rotation handing this peer a different character)
+	# has to release the old one, or a stale HeatStatus keeps a live handle on
+	# this node and can still trigger spectator mode from a past round.
+	if _own_body != null and is_instance_valid(_own_body):
+		var old_heat: HeatStatus = _own_body.get_node_or_null("HeatStatus")
+		if old_heat != null and old_heat.died.is_connected(_on_local_death):
+			old_heat.died.disconnect(_on_local_death)
+
 	_own_body = body
 	if body == null:
 		return
 	var heat: HeatStatus = body.get_node_or_null("HeatStatus")
 	if heat == null:
 		return
-	heat.died.connect(_on_local_death)
+	if not heat.died.is_connected(_on_local_death):
+		heat.died.connect(_on_local_death)
 	# Late spawns and rejoins: if they are already out by the time this runs,
 	# don't wait for a signal that has been and gone.
 	if heat.is_dead():

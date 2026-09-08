@@ -37,6 +37,15 @@ var rotation: Array = []
 var round_index: int = 0
 var is_active: bool = false
 
+## Identifies THIS series, so a listener can tell one set from the next.
+##
+## series_finished fires on every peer every time the state syncs while the
+## table is complete - a late joiner, a disconnect, anything that reboadcasts -
+## not once at the end. The career leaderboard folds a finished series into
+## permanent records, so it needs to know it is looking at the same set it
+## already banked rather than a new one that happens to look similar.
+var series_id: int = 0
+
 ## Rescues completed in the CURRENT round only, peer_id -> count. Server-side;
 ## folded into `scores` when the round is recorded and then cleared.
 var _round_rescues: Dictionary = {}
@@ -69,6 +78,9 @@ func begin_series(players: Dictionary) -> void:
 	rotation.shuffle()
 	round_index = 0
 	is_active = true
+	# Wall clock in milliseconds plus a random tail. Two series can't share an
+	# id unless they opened in the same millisecond AND drew the same tail.
+	series_id = int(Time.get_unix_time_from_system() * 1000.0) ^ randi()
 	_round_rescues.clear()
 
 	scores.clear()
@@ -89,6 +101,7 @@ func end_series() -> void:
 	is_active = false
 	rotation.clear()
 	round_index = 0
+	series_id = 0
 	scores.clear()
 	_round_rescues.clear()
 	_broadcast_state()
@@ -191,9 +204,9 @@ func series_complete() -> bool:
 
 func _broadcast_state() -> void:
 	if _is_networked():
-		_rpc_sync_state.rpc(scores, rotation, round_index, is_active)
+		_rpc_sync_state.rpc(scores, rotation, round_index, is_active, series_id)
 	else:
-		_rpc_sync_state(scores, rotation, round_index, is_active)
+		_rpc_sync_state(scores, rotation, round_index, is_active, series_id)
 
 
 func _broadcast_round(summary: Dictionary) -> void:
@@ -205,11 +218,12 @@ func _broadcast_round(summary: Dictionary) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _rpc_sync_state(new_scores: Dictionary, new_rotation: Array,
-		new_round_index: int, active: bool) -> void:
+		new_round_index: int, active: bool, new_series_id: int) -> void:
 	scores = new_scores
 	rotation = new_rotation
 	round_index = new_round_index
 	is_active = active
+	series_id = new_series_id
 	standings_changed.emit()
 	if series_complete():
 		series_finished.emit()

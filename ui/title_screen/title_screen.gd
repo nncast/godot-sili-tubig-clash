@@ -20,6 +20,9 @@ extends Control
 @onready var join_confirm_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinConfirmButton
 @onready var join_cancel_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinCancelButton
 
+var _leaderboard_panel: Control = null
+var _leaderboard_button: Button = null
+
 @onready var how_to_panel: Control = $HowToPanel
 @onready var how_to_body: RichTextLabel = $HowToPanel/Panel/Margin/VBox/Body
 @onready var how_to_close_button: Button = $HowToPanel/Panel/Margin/VBox/CloseButton
@@ -45,6 +48,8 @@ func _ready() -> void:
 
 	$ExitPanel/Panel/Margin/VBox/ButtonsRow/ExitConfirmButton.pressed.connect(_on_exit_confirmed)
 	$ExitPanel/Panel/Margin/VBox/ButtonsRow/ExitCancelButton.pressed.connect(_on_exit_cancel_pressed)
+
+	_build_leaderboard()
 
 	NetworkManager.player_list_changed.connect(_on_player_list_changed)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
@@ -176,6 +181,35 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif exit_panel.visible:
 		_on_exit_cancel_pressed()
 		get_viewport().set_input_as_handled()
+	elif _leaderboard_panel != null and _leaderboard_panel.visible:
+		_leaderboard_panel.close()
+		get_viewport().set_input_as_handled()
+
+
+## Added in code rather than to the .tscn: the button has to slot into an
+## existing VBox at a specific position, and the panel is a sibling modal like
+## the others. Doing both here keeps the whole feature in one place instead of
+## split across a scene file.
+func _build_leaderboard() -> void:
+	_leaderboard_panel = load("res://ui/leaderboard/leaderboard_panel.gd").new()
+	_leaderboard_panel.name = "LeaderboardPanel"
+	add_child(_leaderboard_panel)
+
+	_leaderboard_button = Button.new()
+	_leaderboard_button.name = "LeaderboardButton"
+	_leaderboard_button.text = "Leaderboard"
+	_leaderboard_button.custom_minimum_size = host_button.custom_minimum_size
+	_leaderboard_button.pressed.connect(_on_leaderboard_pressed)
+	var column := host_button.get_parent() as VBoxContainer
+	column.add_child(_leaderboard_button)
+	# Under "How to Play", above "Settings": grouped with the other things that
+	# open a panel rather than with the two that start a game.
+	column.move_child(_leaderboard_button, settings_button.get_index())
+
+
+func _on_leaderboard_pressed() -> void:
+	_close_all_panels()
+	_leaderboard_panel.open()
 
 
 func _on_settings_pressed() -> void:
@@ -192,3 +226,5 @@ func _close_all_panels() -> void:
 	join_panel.visible = false
 	how_to_panel.visible = false
 	exit_panel.visible = false
+	if _leaderboard_panel != null:
+		_leaderboard_panel.close()

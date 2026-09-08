@@ -1,6 +1,8 @@
 [gd_scene format=3 uid="uid://b8c1w60sxq3g1"]
 
 [ext_resource type="Texture2D" uid="uid://c6sf82eh2fejy" path="res://game/assets/art/tilesets/3_City_Props_16x16.png" id="1_r6con"]
+[ext_resource type="Script" uid="uid://dc1odjig1q4e1" path="res://game/arena/systems/canopy_fade.gd" id="2_canopy"]
+[ext_resource type="Script" uid="uid://upu5n81ysaxx" path="res://game/props/powerup/fountain.gd" id="3_fountain"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_4pnc4"]
 texture = ExtResource("1_r6con")
@@ -4363,12 +4365,15 @@ physics_layer_0/collision_layer = 1
 sources/0 = SubResource("TileSetAtlasSource_4pnc4")
 
 [node name="fountain" type="Node2D" unique_id=1666262051]
+script = ExtResource("3_fountain")
 
 [node name="bottom" type="TileMapLayer" parent="." unique_id=103259654]
 tile_map_data = PackedByteArray(0, 0, 5, 0, 2, 0, 0, 0, 11, 0, 29, 0, 0, 0, 5, 0, 3, 0, 0, 0, 11, 0, 30, 0, 0, 0, 6, 0, 2, 0, 0, 0, 12, 0, 29, 0, 0, 0, 6, 0, 3, 0, 0, 0, 12, 0, 30, 0, 0, 0)
 tile_set = SubResource("TileSet_3sajy")
 
-[node name="over" type="TileMapLayer" parent="." unique_id=1729808777]
+[node name="top" type="TileMapLayer" parent="." unique_id=1729808777]
 z_index = 21
 tile_map_data = PackedByteArray(0, 0, 5, 0, 1, 0, 0, 0, 11, 0, 28, 0, 0, 0, 6, 0, 1, 0, 0, 0, 12, 0, 28, 0, 0, 0)
 tile_set = SubResource("TileSet_3sajy")
+script = ExtResource("2_canopy")
+fade_mode = 0

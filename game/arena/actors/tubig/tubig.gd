@@ -13,6 +13,18 @@ const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
 
 const TUNNEL_USES_MAX := 3
 
+## Hard ceiling on tunnel charges however many fountain rolls land on you. Four
+## drinks exist in a round (one per Sili speed stage) and a lucky run of +3s
+## would otherwise hand one player twelve free map-crossings, which stops being
+## a decision and starts being an exploit - and "balanced mechanics, no unfair
+## advantage" is its own judging line.
+const TUNNEL_USES_CEILING := 6
+
+## What a fountain STAMINA roll is worth: sprint costs a third less and recovers
+## half again as fast, for the duration the fountain hands over.
+const STAMINA_BUFF_DRAIN_SCALE := 0.65
+const STAMINA_BUFF_REGEN_SCALE := 1.5
+
 const WALK_SPEED = 100.0
 const RUN_SPEED = 180.0
 const FRICTION = 1200.0
@@ -90,6 +102,12 @@ var _rescue_prompt: Label = null
 ## Tracked per Tubig and spent locally, like stamina. Players are rebuilt when
 ## the arena reloads, so a replay hands everyone a fresh set.
 var tunnel_uses_left: int = TUNNEL_USES_MAX
+## Set by whichever Fountain we're standing in - see fountain.gd. Exactly the
+## same push-from-the-prop pattern as _nearby_tunnel, and for the same reason:
+## Sili has no set_nearby_fountain(), so the Sili is never even offered it.
+var _nearby_fountain: Fountain = null
+var _fountain_prompt: Label = null
+var _stamina_buff_remaining: float = 0.0
 @onready var rescue_indicator: ProgressBar = $RescueIndicator
 @onready var rescue_indicator_label: Label = $RescueIndicator/RescueLabel
 
@@ -178,9 +196,11 @@ func _physics_process(delta: float) -> void:
 	var wants_to_rescue := Input.is_action_pressed("rescue")
 
 	_tunnel_cooldown = maxf(0.0, _tunnel_cooldown - delta)
+	_stamina_buff_remaining = maxf(0.0, _stamina_buff_remaining - delta)
 	if Input.is_action_just_pressed("rescue"):
-		_try_use_tunnel()
+		_try_interact()
 	_update_tunnel_prompt()
+	_update_fountain_prompt()
 	_update_rescue_prompt()
 
 	var is_moving := input_vector != Vector2.ZERO
@@ -362,15 +382,70 @@ func clear_nearby_tunnel(tunnel: Tunnel) -> void:
 		_nearby_tunnel = null
 
 
-## E is shared with rescuing, so a burning ally within reach wins: a tap next
-## to someone who needs pulling out should never quietly teleport you away and
-## leave them behind. With nobody to save, the same tap takes the tunnel.
+## Called by Fountain.body_entered/body_exited. The Sili has no equivalent,
+## which is exactly how the fountain stays Tubig-only - same construction as
+## set_nearby_tunnel above.
+func set_nearby_fountain(fountain: Fountain) -> void:
+	_nearby_fountain = fountain
+
+
+func clear_nearby_fountain(fountain: Fountain) -> void:
+	if _nearby_fountain == fountain:
+		_nearby_fountain = null
+
+
+## E now does three different things, so the order it resolves in is a design
+## decision rather than an implementation detail. Highest priority first:
+##
+##   1. RESCUE a burning ally. A tap next to someone who needs pulling out must
+##      never quietly do something else and leave them behind.
+##   2. DRINK from a charged fountain. Deliberately above the tunnel: you had to
+##      walk to the fountain on purpose, and a charge is a shared team resource
+##      that expires when the next speed stage lands. Being teleported away
+##      instead - by a tunnel mouth that happened to overlap - would cost the
+##      whole team the drink, not just you.
+##   3. TAKE THE TUNNEL, the fallback when nothing above applies.
+##
+## Each prompt says which of the three is currently armed, so the priority is
+## visible on screen instead of being something players have to learn by
+## losing a rescue to it.
+func _try_interact() -> void:
+	if _find_burning_ally() != null:
+		return  # rescue is a hold, handled by _handle_rescue_channel
+	if _try_use_fountain():
+		return
+	_try_use_tunnel()
+
+
+## Returns whether the tap was consumed. The answer arrives asynchronously (the
+## server rolls the buff and RPCs it back), but the tap itself is spent either
+## way - otherwise a mistimed press would fall through and burn a tunnel charge
+## on a player who was reaching for a drink.
+func _try_use_fountain() -> bool:
+	if _nearby_fountain == null or not is_instance_valid(_nearby_fountain):
+		return false
+	if not _nearby_fountain.is_charged:
+		return false
+	if multiplayer.has_multiplayer_peer():
+		_nearby_fountain.rpc_id(1, "request_drink")
+	else:
+		_nearby_fountain.request_drink()
+	return true
+
+
+## Applied by Fountain._rpc_apply_buff on the drinker's own machine.
+func grant_tunnel_uses(amount: int) -> void:
+	tunnel_uses_left = mini(TUNNEL_USES_CEILING, tunnel_uses_left + amount)
+
+
+func grant_stamina_buff(duration: float) -> void:
+	_stamina_buff_remaining = maxf(_stamina_buff_remaining, duration)
+
+
 func _try_use_tunnel() -> void:
 	if _tunnel_cooldown > 0.0 or _is_channeling or tunnel_uses_left <= 0:
 		return
 	if _nearby_tunnel == null or not is_instance_valid(_nearby_tunnel):
-		return
-	if _find_burning_ally() != null:
 		return
 
 	var destination = _nearby_tunnel.exit_position()
@@ -427,8 +502,48 @@ func _update_tunnel_prompt() -> void:
 		_tunnel_prompt.modulate = Color(0.65, 0.65, 0.68)
 
 
-## Mirrors the tunnel prompt, one line higher so the two never overlap when a
-## burning ally happens to be standing in a tunnel mouth. Says "hold" because
+## Sits between the tunnel prompt and the rescue prompt, so all three can be on
+## screen at once without overlapping and the stack reads top-to-bottom in the
+## same order E resolves them (see _try_interact).
+##
+## Stays visible when the fountain is empty rather than disappearing, for the
+## same reason the tunnel prompt does: a player standing at a fountain that
+## silently shows nothing concludes the fountain is broken, where "Fountain is
+## empty" tells them to come back after the next speed-up.
+func _update_fountain_prompt() -> void:
+	var near := _nearby_fountain != null and is_instance_valid(_nearby_fountain)
+
+	if _fountain_prompt == null:
+		if not near:
+			return
+		_fountain_prompt = Label.new()
+		_fountain_prompt.name = "FountainPrompt"
+		_fountain_prompt.anchor_left = 0.5
+		_fountain_prompt.anchor_right = 0.5
+		_fountain_prompt.anchor_top = 1.0
+		_fountain_prompt.anchor_bottom = 1.0
+		_fountain_prompt.offset_left = -110.0
+		_fountain_prompt.offset_right = 110.0
+		_fountain_prompt.offset_top = -186.0
+		_fountain_prompt.offset_bottom = -160.0
+		_fountain_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_fountain_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		_fountain_prompt.add_theme_constant_override("outline_size", 5)
+		ui_layer.add_child(_fountain_prompt)
+
+	_fountain_prompt.visible = near
+	if not near:
+		return
+	if _nearby_fountain.is_charged:
+		_fountain_prompt.text = "[E] Drink"
+		_fountain_prompt.modulate = Color(0.45, 0.85, 0.95)
+	else:
+		_fountain_prompt.text = "Fountain is empty"
+		_fountain_prompt.modulate = Color(0.65, 0.65, 0.68)
+
+
+## Mirrors the tunnel prompt, above the fountain line so the three never overlap
+## when a burning ally happens to be standing in a tunnel mouth. Says "hold" because
 ## rescuing is a channel, not a tap - without that, players tap E once, see
 ## nothing happen and assume the rescue is broken.
 func _update_rescue_prompt() -> void:
@@ -446,8 +561,8 @@ func _update_rescue_prompt() -> void:
 		_rescue_prompt.anchor_bottom = 1.0
 		_rescue_prompt.offset_left = -110.0
 		_rescue_prompt.offset_right = 110.0
-		_rescue_prompt.offset_top = -158.0
-		_rescue_prompt.offset_bottom = -132.0
+		_rescue_prompt.offset_top = -214.0
+		_rescue_prompt.offset_bottom = -188.0
 		_rescue_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_rescue_prompt.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 		_rescue_prompt.add_theme_constant_override("outline_size", 5)
@@ -495,12 +610,16 @@ func _find_burning_ally() -> Node2D:
 func _update_stamina(delta: float, is_running: bool) -> void:
 	var previous_stamina := stamina
 
+	var buffed := _stamina_buff_remaining > 0.0
+	var drain := STAMINA_DRAIN_RATE * (STAMINA_BUFF_DRAIN_SCALE if buffed else 1.0)
+	var regen := STAMINA_REGEN_RATE * (STAMINA_BUFF_REGEN_SCALE if buffed else 1.0)
+
 	if is_running:
-		stamina = max(0.0, stamina - STAMINA_DRAIN_RATE * delta)
+		stamina = max(0.0, stamina - drain * delta)
 		if stamina == 0.0 and not is_exhausted:
 			_enter_exhaustion()
 	else:
-		stamina = min(MAX_STAMINA, stamina + STAMINA_REGEN_RATE * delta)
+		stamina = min(MAX_STAMINA, stamina + regen * delta)
 
 	if is_exhausted:
 		_exhaustion_timer -= delta

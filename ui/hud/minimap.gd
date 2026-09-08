@@ -8,6 +8,8 @@ extends Control
 ## What gets drawn on top of it depends on which team you're on:
 ##
 ##   Tubig  - every teammate as a blue dot (concealed ones drop off entirely),
+##            a dashed PURPLE guide line to any teammate who is tagged and
+##            still savable,
 ##            plus a red dot for the Sili IF any Tubig currently has it on
 ##            screen. The red dot is shared team-wide and vanishes the instant
 ##            the last person loses sight of it.
@@ -21,6 +23,13 @@ extends Control
 const COLOR_TUBIG := Color(0.35, 0.65, 1.0)
 const COLOR_SILI := Color(1.0, 0.25, 0.25)
 const COLOR_BURNING_RING := Color(0.95, 0.6, 0.15)
+## Purple is reserved on this map for ONE meaning: a teammate is tagged and the
+## clock is running on saving them. Nothing else in the game uses it, so a
+## purple line appearing in the corner of your eye is unambiguous without
+## reading anything.
+const COLOR_TAGGED_GUIDE := Color(0.72, 0.42, 0.98)
+const GUIDE_DASH_LENGTH := 5.0
+const GUIDE_GAP_LENGTH := 4.0
 const COLOR_BACKDROP := Color(0.05, 0.06, 0.09, 0.72)
 const COLOR_BORDER := Color(0.85, 0.88, 0.95, 0.35)
 const TRANSPARENT := Color(0, 0, 0, 0)
@@ -244,11 +253,67 @@ func _draw_for_tubig() -> void:
 		if is_self and not concealed:
 			draw_arc(point, radius + 1.5, 0.0, TAU, 20, Color(1, 1, 1, 0.85), 1.0)
 
+	# Drawn after every dot so a guide is never buried under a teammate marker.
+	_draw_tagged_guides()
+
 	# Red dot only while a teammate genuinely has eyes on the Sili.
 	if SightingTracker.is_sili_spotted and is_instance_valid(_sili_player):
 		var sili_point := _map_point(_sili_player.global_position)
 		draw_circle(sili_point, DOT_RADIUS + 0.5, COLOR_SILI)
 		draw_arc(sili_point, DOT_RADIUS + 3.0, 0.0, TAU, 20, Color(COLOR_SILI.r, COLOR_SILI.g, COLOR_SILI.b, 0.5), 1.0)
+
+
+## A dashed purple line from your own dot to every tagged teammate, ending in a
+## pulsing purple ring on their position.
+##
+## The orange burning ring already said "this person is tagged"; it did not say
+## WHICH WAY TO RUN, which is the only thing that matters while a thirty-second
+## burn timer is running. A dot on a small map still needs to be found. A line
+## from you to them can be read at a glance and turns a rescue into a decision
+## about distance rather than a hunt for a marker.
+##
+## BURNING only, never DEAD. A guide to someone who can no longer be saved would
+## walk you across the map into a Sili camping the body for nothing, which is
+## worse than no guide at all.
+func _draw_tagged_guides() -> void:
+	if not is_instance_valid(_local_player):
+		return
+	# Rooted players cannot go anywhere, so pointing them at a rescue is noise.
+	var own_heat = _local_player.get_node_or_null("HeatStatus")
+	if own_heat and own_heat.is_incapacitated():
+		return
+
+	var origin := _map_point(_local_player.global_position)
+	var pulse: float = 0.55 + 0.45 * (0.5 + 0.5 * sin(_pulse_time * 5.0))
+
+	for tubig in _tubig_players:
+		if not is_instance_valid(tubig) or tubig == _local_player:
+			continue
+		var heat = tubig.get_node_or_null("HeatStatus")
+		if heat == null or not heat.is_burning():
+			continue
+
+		var target := _map_point(tubig.global_position)
+		_draw_dashed_line(origin, target,
+			Color(COLOR_TAGGED_GUIDE.r, COLOR_TAGGED_GUIDE.g, COLOR_TAGGED_GUIDE.b, 0.75 * pulse))
+		draw_arc(target, DOT_RADIUS + 4.0, 0.0, TAU, 22,
+			Color(COLOR_TAGGED_GUIDE.r, COLOR_TAGGED_GUIDE.g, COLOR_TAGGED_GUIDE.b, pulse), 1.6)
+
+
+## Dashed rather than solid on purpose: with three teammates down at once, three
+## solid lines from your dot become a filled purple wedge that hides the terrain
+## underneath. Dashes stay readable when they overlap.
+func _draw_dashed_line(from: Vector2, to: Vector2, color: Color) -> void:
+	var span := to - from
+	var distance := span.length()
+	if distance < 1.0:
+		return
+	var step := span / distance
+	var travelled := 0.0
+	while travelled < distance:
+		var segment_end: float = minf(travelled + GUIDE_DASH_LENGTH, distance)
+		draw_line(from + step * travelled, from + step * segment_end, color, 1.4)
+		travelled = segment_end + GUIDE_GAP_LENGTH
 
 
 func _draw_for_sili() -> void:

@@ -289,7 +289,7 @@ Sprinting drains your stamina bar. Empty it and you are exhausted for 2 seconds 
 
 [color=#ffd27f]PLAYING AS TUBIG[/color]
 - You have 3 hearts. Every tag costs one permanently. A rescue does not give it back.
-- Being tagged sets you burning: you are rooted where you stand for 15 seconds. A teammate who stands next to you and holds E for 6 seconds pulls you out. If nobody reaches you in time you are out for the rest of the match, and losing your last heart takes you out immediately.
+- Being tagged sets you burning: you are rooted where you stand for 30 seconds. A teammate who stands next to you and holds E for 6 seconds pulls you out. If nobody reaches you in time you are out for the rest of the match, and losing your last heart takes you out immediately.
 - Rescues shut off for the final 45 seconds. Anything that lands after that is final.
 - Hiding spots: stand still inside one for a moment and you go HIDDEN, dropping your dot off the team minimap. You are not invisible in the world - the Sili can still walk into you and tag you.
 - Tunnels: step into a mouth and press E to surface at the far end. Three trips per match, then they are spent. A burning teammate beside you always wins the key over the tunnel.

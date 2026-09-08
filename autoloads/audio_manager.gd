@@ -20,6 +20,10 @@ const MUSIC_INGAME: AudioStream = preload("res://game/assets/audio/music/Music_I
 const SFX_UI_HOVER: AudioStream = preload("res://game/assets/audio/ui/ui_hover.wav")
 const SFX_UI_CLICK: AudioStream = preload("res://game/assets/audio/ui/ui_click.wav")
 const AMBIENCE_OCEAN := "res://game/assets/audio/ambiance/Ambiance_Ocean_Praia_dos_Moinhos_Loop_Stereo_02.wav"
+## Chase sting, layered OVER the in-game track while the Sili is close. Loaded
+## by path rather than preload()ed because it needs its loop points forced at
+## load time - see load_looping_wav().
+const MUSIC_DANGER := "res://game/assets/audio/music/Danger_03.wav"
 
 ## Gameplay sound effects, all synthesised by tools/generate_audio.py.
 ## Loaded by name rather than preloaded individually so call sites read as
@@ -51,6 +55,16 @@ const SFX_VOICES := 6
 const MAX_POSITIONAL_SFX := 12
 
 const CROSSFADE_TIME := 1.2
+## The danger layer rides on top of the in-game track rather than replacing it,
+## so it sits a little above MUSIC_DB to be clearly audible without burying the
+## footsteps and the ocean - the cues that actually tell you where someone is.
+const DANGER_DB := -14.0
+## Asymmetric on purpose. Coming in fast is the point: the sting has to land
+## while the Sili is still approaching, not after they've arrived. Going out
+## slowly stops the music flickering every time a chase weaves behind a wall,
+## and lets the tension hang for a beat after you think you've lost them.
+const DANGER_FADE_IN := 0.6
+const DANGER_FADE_OUT := 2.0
 ## Music sits well under the game now - background texture, not a score.
 ## Footsteps and the ocean are the cues that carry information in a game about
 ## hearing where someone is, so the music has to leave room for them.
@@ -70,6 +84,10 @@ var _music_b: AudioStreamPlayer
 var _active_music: AudioStreamPlayer
 var _current_track: AudioStream = null
 var _fade_tween: Tween
+
+var _danger_music: AudioStreamPlayer
+var _danger_tween: Tween
+var _danger_active := false
 
 var _ui_voices: Array[AudioStreamPlayer] = []
 var _ui_voice_index := 0
@@ -198,6 +216,78 @@ func _crossfade_to(stream: AudioStream) -> void:
 		_fade_tween.finished.connect(outgoing.stop, CONNECT_ONE_SHOT)
 
 
+# --- Danger layer -----------------------------------------------------------
+
+## Fades the chase sting in over whatever music is already playing. Safe to
+## call every frame: a repeat call while it's already up does nothing, so the
+## caller can just describe the situation rather than track edges itself.
+##
+## Deliberately a LAYER and not a crossfade. Swapping tracks would mean the
+## in-game music restarting from the top every time a Sili wanders past, and
+## would fight _crossfade_to for the same two voices.
+func start_danger_music() -> void:
+	if _danger_active:
+		return
+	_danger_active = true
+
+	var stream := load_looping_wav(MUSIC_DANGER)
+	if stream == null:
+		push_warning("AudioManager: missing danger track at '%s'." % MUSIC_DANGER)
+		return
+
+	if _danger_music == null:
+		_danger_music = AudioStreamPlayer.new()
+		_danger_music.name = "DangerMusic"
+		_danger_music.bus = "Music"
+		add_child(_danger_music)
+
+	# Only restart the clip if it isn't already running. Fading back in on a
+	# still-playing voice keeps the loop continuous through a quick
+	# lost-then-found, instead of snapping back to the first bar.
+	if not _danger_music.playing:
+		_danger_music.stream = stream
+		_danger_music.volume_db = GameSettings.MIN_DB
+		_danger_music.play()
+
+	_fade_danger_to(DANGER_DB, DANGER_FADE_IN)
+
+
+## Fades the sting out and stops the voice once it's silent. Also safe to call
+## repeatedly.
+func stop_danger_music() -> void:
+	if not _danger_active:
+		return
+	_danger_active = false
+	if _danger_music == null or not _danger_music.playing:
+		return
+	_fade_danger_to(GameSettings.MIN_DB, DANGER_FADE_OUT)
+	# Bound to this specific tween so a fade-in that interrupts the fade-out
+	# can't be stopped by the older tween finishing afterwards.
+	_danger_tween.finished.connect(func():
+		if not _danger_active and _danger_music:
+			_danger_music.stop(), CONNECT_ONE_SHOT)
+
+
+## One tween at a time, killed on replacement - otherwise a fade-out started
+## mid-fade-in leaves two tweens writing volume_db in the same frame and the
+## level lands wherever the later one happens to run.
+func _fade_danger_to(target_db: float, duration: float) -> void:
+	if _danger_tween and _danger_tween.is_valid():
+		_danger_tween.kill()
+	_danger_tween = create_tween()
+	_danger_tween.tween_property(_danger_music, "volume_db", target_db, duration)
+
+
+## Cuts the sting immediately, no fade. For leaving the arena entirely, where
+## a two-second tail would play over the results screen.
+func kill_danger_music() -> void:
+	_danger_active = false
+	if _danger_tween and _danger_tween.is_valid():
+		_danger_tween.kill()
+	if _danger_music:
+		_danger_music.stop()
+
+
 ## Handle music looping - when a track finishes, restart it if it's still
 ## the current active track and we're not crossfading to something else.
 func _on_music_finished(player: AudioStreamPlayer) -> void:
@@ -214,6 +304,9 @@ func _on_match_started() -> void:
 ## on the next, so this asks which side the local player is on rather than
 ## playing one stinger for everybody.
 func _on_match_ended(sili_won: bool) -> void:
+	# The chase is over the instant the whistle goes, so the sting should not
+	# be fading out underneath the win/lose stinger.
+	kill_danger_music()
 	var my_id := multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1
 	var my_role: String = NetworkManager.roles.get(my_id, "tubig")
 	var i_won: bool = my_role == ("sili" if sili_won else "tubig")
@@ -320,14 +413,23 @@ func play_sfx_at(sfx_name: String, world_position: Vector2, extra_db: float = 0.
 ## has the old non-looping .sample cached would otherwise still play it once and
 ## fall silent - which is exactly what "the waves stop" looks like.
 static func load_ocean_loop() -> AudioStream:
-	if not ResourceLoader.exists(AMBIENCE_OCEAN):
+	return load_looping_wav(AMBIENCE_OCEAN)
+
+
+## Loads a .wav with looping forced on in code as well as in the .import.
+## The import flag only takes effect on a reimport, so a project that already
+## has an old non-looping .sample cached would otherwise still play it once and
+## fall silent. Shared by the ocean ambience and the danger sting, which are
+## both loops shipped with the importer's default (non-looping) settings.
+static func load_looping_wav(path: String) -> AudioStream:
+	if not ResourceLoader.exists(path):
 		return null
-	var stream := load(AMBIENCE_OCEAN)
+	var stream := load(path)
 	var wav := stream as AudioStreamWAV
 	if wav:
 		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		# A LOOP_FORWARD stream with loop_end still at 0 loops a zero-length
-		# region, which is silence rather than waves. Derive it from the clip
+		# region, which is silence rather than sound. Derive it from the clip
 		# length instead of the raw byte count - the file imports as compressed
 		# audio, so bytes-per-sample arithmetic would be wrong.
 		if wav.loop_end <= 0:

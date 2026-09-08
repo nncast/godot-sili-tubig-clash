@@ -16,8 +16,12 @@ extends RefCounted
 ##   2. Ground layers are named exactly: road, stairs, grass, sand, sandfade,
 ##      sea. These are the keys in SurfaceAudio.SURFACE_LAYERS; a typo means
 ##      silent footsteps on that surface, with no error to tell you why.
-##   3. Overhead layers are named "over", at z_index 21, with canopy_fade.gd
-##      attached and a fade_mode suited to how that layer is painted.
+##   3. Overhead layers are named "over" (in a map) or "top" (in a prop scene
+##      under game/props, where it is paired with a "bottom"), at z_index 21,
+##      with canopy_fade.gd attached and a fade_mode suited to how that layer is
+##      painted. The half of a prop that the player walks IN FRONT of goes in
+##      "bottom" at the default z_index, and must not be duplicated into "top" -
+##      a cell painted in both layers draws twice.
 ##   4. A SpawnPoints child holding at least one "sili" marker and at least
 ##      four "tubig" markers.
 ##   5. NO player containers. Those belong to the shell - see the comment on

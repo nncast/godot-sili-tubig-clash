@@ -21,6 +21,10 @@ const COLOR_TAG := Color(1.0, 0.48, 0.42)
 const COLOR_RESCUE := Color(0.52, 0.88, 0.62)
 const COLOR_WARNING := Color(1.0, 0.82, 0.36)
 const COLOR_NEUTRAL := Color(0.86, 0.88, 0.92)
+## Fountain lines - refills and the buff each drink rolled. Its own colour
+## because a buff is neither a warning nor a rescue, and the whole point of the
+## feed is that you can tell what happened from the colour before you read it.
+const COLOR_BUFF := Color(0.45, 0.85, 0.95)
 
 
 func _ready() -> void:
@@ -42,6 +46,8 @@ func _on_event_logged(message: String, kind: String) -> void:
 			color = COLOR_RESCUE
 		"warning":
 			color = COLOR_WARNING
+		"buff":
+			color = COLOR_BUFF
 	push_entry(message, color)
 
 

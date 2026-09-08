@@ -2388,12 +2388,12 @@ sources/0 = SubResource("TileSetAtlasSource_thns8")
 [node name="palm" type="Node2D" unique_id=1272566322]
 
 [node name="bottom" type="TileMapLayer" parent="." unique_id=1395401655]
+tile_map_data = PackedByteArray("AAAAAAEAAAAYAAwAAAD//wEAAAAXAAwAAAA=")
+tile_set = SubResource("TileSet_3sajy")
+
+[node name="top" type="TileMapLayer" parent="." unique_id=939292968]
 z_index = 21
-tile_map_data = PackedByteArray("AAD+//3/AAAWAAgAAAD+//7/AAAWAAkAAAD+////AAAWAAoAAAD///3/AAAXAAgAAAD///7/AAAXAAkAAAD/////AAAXAAoAAAD//wAAAAAXAAsAAAAAAP3/AAAYAAgAAAAAAP7/AAAYAAkAAAAAAP//AAAYAAoAAAAAAAAAAAAYAAsAAAABAP3/AAAZAAgAAAABAP7/AAAZAAkAAAABAP//AAAZAAoAAAABAAAAAAAZAAsAAAAAAAEAAAAYAAwAAAD//wEAAAAXAAwAAAA=")
+tile_map_data = PackedByteArray("AAD+//3/AAAWAAgAAAD+//7/AAAWAAkAAAD+////AAAWAAoAAAD///3/AAAXAAgAAAD///7/AAAXAAkAAAD/////AAAXAAoAAAD//wAAAAAXAAsAAAAAAP3/AAAYAAgAAAAAAP7/AAAYAAkAAAAAAP//AAAYAAoAAAAAAAAAAAAYAAsAAAABAP3/AAAZAAgAAAABAP7/AAAZAAkAAAABAP//AAAZAAoAAAABAAAAAAAZAAsAAAA=")
 tile_set = SubResource("TileSet_3sajy")
 script = ExtResource("2_canopy")
 fade_mode = 0
-
-[node name="top" type="TileMapLayer" parent="." unique_id=939292968]
-tile_map_data = PackedByteArray("AAD//wEAAAAXAAwAAAAAAAEAAAAYAAwAAAA=")
-tile_set = SubResource("TileSet_3sajy")

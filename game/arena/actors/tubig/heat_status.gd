@@ -10,7 +10,16 @@ class_name HeatStatus
 
 enum State { NORMAL, BURNING, DEAD }
 
-@export var BURN_TIMEOUT: float = 15.0  # seconds a player can stay Burning before it's fatal
+## Seconds a player can stay Burning before it's fatal.
+##
+## The budget is not all travel time: the rescuer has to stand still for
+## RESCUE_CHANNEL_TIME (6s) once they arrive, so the old 15s left barely 9s to
+## actually get there. At RUN_SPEED that is ~1620px, against a map whose
+## painted ground is ~1376x848 - so a rescue only worked if a teammate happened
+## to already be sprinting the right way. 30s leaves ~24s of travel, comfortably
+## more than the map's diagonal, which makes the run a decision rather than a
+## coin flip. Exported so it stays tunable per-playtest.
+@export var BURN_TIMEOUT: float = 30.0
 ## Hearts are LIVES. One is spent per tag and never comes back - a rescue only
 ## unfreezes you, it does not refund the heart. Counted HERE rather than on the
 ## Tubig body because this node's authority is the server (see

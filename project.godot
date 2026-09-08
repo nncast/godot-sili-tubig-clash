@@ -34,6 +34,7 @@ SeriesManager="*res://autoloads/series_manager.gd"
 window/size/mode=2
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+mouse_cursor/custom_image="uid://c2ckxx3t7ukq4"
 
 [gui]
 

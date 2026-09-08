@@ -68,7 +68,8 @@ func _process(_d: float) -> bool:
 		print("        ground layers found: %s" % str(named))
 		_c("%s: has at least one known ground layer" % id, named.size() >= 1, true)
 
-		# Every "over" layer must be fully wired, wherever it sits.
+		# Every overhead layer must be fully wired, wherever it sits - including
+		# the ones inside prop scenes, which is where both bugs were hiding.
 		for layer in _find_over_layers(m):
 			var path := String(m.get_path_to(layer))
 			_c("%s: %s has canopy script" % [id, path], layer.get_script() != null, true)
@@ -95,9 +96,18 @@ func _process(_d: float) -> bool:
 	quit(1 if _f > 0 else 0)
 	return true
 
+## Two spellings, one rule. The map scenes name their overhead layers "over"
+## (one per terrain group); the prop scenes under game/props name theirs "top",
+## paired with a "bottom". Only "over" used to be checked here, which is exactly
+## why palm.tscn shipped with z_index 21 and canopy_fade.gd on its BOTTOM layer
+## and nothing caught it: the trunk was drawing over the player and fading,
+## while the canopy sat underneath. Both names are validated now.
+const OVERHEAD_LAYER_NAMES := ["over", "top"]
+
+
 func _find_over_layers(n: Node) -> Array:
 	var out := []
-	if n is TileMapLayer and n.name == "over":
+	if n is TileMapLayer and String(n.name) in OVERHEAD_LAYER_NAMES:
 		out.append(n)
 	for c in n.get_children():
 		out.append_array(_find_over_layers(c))

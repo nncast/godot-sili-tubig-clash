@@ -6,19 +6,26 @@ extends Node
 const SETTINGS_PATH := "user://settings.cfg"
 const MIN_DB := -80.0
 
-## Defaults for a first launch. These are a deliberate mix, not four sliders
-## parked at 100%: this is a hide-and-seek game where the footsteps ARE the
-## information, so the gameplay layer sits loudest and everything else is
-## trimmed to stay out of its way.
+## ONE default for all four sliders, deliberately.
 ##
-##   Master   100%  the baseline the player pulls down if they need to
-##   Music     50%  atmosphere present, never competing with a footstep
-##   SFX       80%  tags, rescues, tunnels, footsteps - the cues that matter
-##   Ambience  40%  sells the beach without masking anything above it
-const DEFAULT_MASTER := 1.0
-const DEFAULT_MUSIC := 0.5
-const DEFAULT_SFX := 0.8
-const DEFAULT_AMBIENCE := 0.4
+## This used to be a spread - Master 1.0, Music 0.5, SFX 0.8, Ambience 0.4 -
+## while every slider in settings.tscn and in the in-match popup was authored at
+## value = 1.0. The two never agreed. _ready() overwrote the scene values from
+## here, so the sliders jumped on open, and worse: the mix was being expressed
+## in two places at once, because bus_layout.tres ALREADY carries it (Music
+## -0.4 dB, UI -4, Ambience -3, plus AudioManager's -20 dB on the music players
+## themselves). Trimming the same channel twice made the real balance impossible
+## to reason about from either file alone.
+##
+## So the split is now clean: the BUS LAYOUT owns the mix, the SLIDERS are the
+## player's controls and start neutral. Every slider reads 100% on a fresh
+## install, which is also the only state a player can verify at a glance.
+const DEFAULT_VOLUME := 1.0
+
+const DEFAULT_MASTER := DEFAULT_VOLUME
+const DEFAULT_MUSIC := DEFAULT_VOLUME
+const DEFAULT_SFX := DEFAULT_VOLUME
+const DEFAULT_AMBIENCE := DEFAULT_VOLUME
 
 var master_volume: float = DEFAULT_MASTER
 var music_volume: float = DEFAULT_MUSIC

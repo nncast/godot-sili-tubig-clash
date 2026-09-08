@@ -22,6 +22,10 @@ const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
 @onready var music_slider: HSlider = $HUD/SettingsPopup/VBox/MusicRow/MusicSlider
 @onready var sfx_slider: HSlider = $HUD/SettingsPopup/VBox/SFXRow/SFXSlider
 @onready var ambience_slider: HSlider = $HUD/SettingsPopup/VBox/AmbienceRow/AmbienceSlider
+@onready var master_value: Label = $HUD/SettingsPopup/VBox/MasterRow/MasterValue
+@onready var music_value: Label = $HUD/SettingsPopup/VBox/MusicRow/MusicValue
+@onready var sfx_value: Label = $HUD/SettingsPopup/VBox/SFXRow/SFXValue
+@onready var ambience_value: Label = $HUD/SettingsPopup/VBox/AmbienceRow/AmbienceValue
 @onready var close_settings_button: Button = $HUD/SettingsPopup/VBox/CloseButton
 @onready var sili_spawner: MultiplayerSpawner = $SiliSpawner
 @onready var tubig_spawner: MultiplayerSpawner = $TubigSpawner
@@ -43,6 +47,7 @@ var map_instance: Node2D = null
 
 var _tubig_players: Array = []
 var _spectator: SpectatorView = null
+var _danger_music: DangerMusic = null
 
 ## Every signal this panel wired up on the LAST rebuild, so the next rebuild can
 ## unwire them. Without this the closures below outlive the rows they capture:
@@ -55,7 +60,14 @@ var _panel_connections: Array = []
 ## Only used if Map/SpawnPoints is missing or has no marker for a role - the
 ## real positions come from the SpawnPoint nodes you drag around in the editor.
 ## Keeping a fallback means deleting a marker mid-edit can't crash a match.
-const FALLBACK_SPAWN_POINTS: Array[Vector2] = [
+##
+## These are OFFSETS from the map's own centre, not world coordinates. They
+## used to be raw coordinates clustered around (0, 0), which is only the middle
+## of the level if the level happens to be painted around the origin - this one
+## is painted a couple of thousand pixels out, so every fallback spawn landed
+## far off the tilemap in empty space. An offset from wherever the ground
+## actually is degrades to "somewhere in the middle of the map" for any map.
+const FALLBACK_SPAWN_OFFSETS: Array[Vector2] = [
 	Vector2(-40, -40), Vector2(60, 40), Vector2(-60, 60),
 	Vector2(80, -60), Vector2(-90, -20), Vector2(30, 90),
 ]
@@ -92,21 +104,31 @@ func _ready() -> void:
 	call_deferred("_refresh_team_state")
 
 
-## Placeholder in-match settings panel - just the same Master/Music/SFX
-## sliders as the main Settings screen, without leaving the match scene.
+## In-match settings panel - the same four rows as the main Settings screen,
+## bound the same way and reading off the same autoload, so a value changed here
+## and a value changed there can never disagree.
 func _setup_settings_popup() -> void:
-	master_slider.value = GameSettings.master_volume
-	music_slider.value = GameSettings.music_volume
-	sfx_slider.value = GameSettings.sfx_volume
-	ambience_slider.value = GameSettings.ambience_volume
-
-	master_slider.value_changed.connect(GameSettings.set_master_volume)
-	music_slider.value_changed.connect(GameSettings.set_music_volume)
-	sfx_slider.value_changed.connect(GameSettings.set_sfx_volume)
-	ambience_slider.value_changed.connect(GameSettings.set_ambience_volume)
+	_bind_volume_row(master_slider, master_value,
+		GameSettings.master_volume, GameSettings.set_master_volume)
+	_bind_volume_row(music_slider, music_value,
+		GameSettings.music_volume, GameSettings.set_music_volume)
+	_bind_volume_row(sfx_slider, sfx_value,
+		GameSettings.sfx_volume, GameSettings.set_sfx_volume)
+	_bind_volume_row(ambience_slider, ambience_value,
+		GameSettings.ambience_volume, GameSettings.set_ambience_volume)
 
 	settings_button.pressed.connect(func(): settings_popup.visible = not settings_popup.visible)
 	close_settings_button.pressed.connect(func(): settings_popup.visible = false)
+
+
+## Mirrors settings.gd's _bind. Four rows configured by one code path is what
+## stops a single row silently drifting away from the other three.
+func _bind_volume_row(slider: HSlider, readout: Label, initial: float, apply: Callable) -> void:
+	slider.value = initial
+	readout.text = "%d%%" % roundi(initial * 100.0)
+	slider.value_changed.connect(apply)
+	slider.value_changed.connect(func(value: float):
+		readout.text = "%d%%" % roundi(value * 100.0))
 
 
 func _spawn_all_players() -> void:
@@ -136,9 +158,36 @@ func _spawn_all_players() -> void:
 func _spawn_position_for(role: String, index: int, container: Node2D) -> Vector2:
 	var markers := _markers_for(role)
 	if markers.is_empty():
-		return FALLBACK_SPAWN_POINTS[index % FALLBACK_SPAWN_POINTS.size()]
+		var offset := FALLBACK_SPAWN_OFFSETS[index % FALLBACK_SPAWN_OFFSETS.size()]
+		return container.to_local(_map_centre() + offset)
 	var marker: SpawnPoint = markers[index % markers.size()]
 	return container.to_local(marker.global_position)
+
+
+## Middle of the painted ground, in world space. Measured off the tilemap
+## layers themselves for the same reason the mini-map bakes from them: it is
+## the one description of where the level is that cannot drift from the level.
+func _map_centre() -> Vector2:
+	if map_instance == null:
+		return Vector2.ZERO
+
+	var bounds := Rect2()
+	var found := false
+	for node in map_instance.find_children("*", "TileMapLayer", true, false):
+		var layer := node as TileMapLayer
+		if layer == null:
+			continue
+		var used: Rect2i = layer.get_used_rect()
+		if used.size == Vector2i.ZERO:
+			continue
+		var tile_size: Vector2 = Vector2(layer.tile_set.tile_size) if layer.tile_set else Vector2(16, 16)
+		var top_left: Vector2 = layer.to_global(Vector2(used.position) * tile_size)
+		var bottom_right: Vector2 = layer.to_global(Vector2(used.end) * tile_size)
+		var layer_rect := Rect2(top_left, bottom_right - top_left)
+		bounds = layer_rect if not found else bounds.merge(layer_rect)
+		found = true
+
+	return bounds.get_center() if found else map_instance.global_position
 
 
 func _markers_for(role: String) -> Array:
@@ -229,6 +278,9 @@ func _configure_local_hud() -> void:
 
 	minimap.configure(local_player, is_sili)
 	threat_vignette.track_player(local_player, not is_sili)
+	# Same signal, two senses: the vignette shows the Sili closing in, the
+	# sting lets you hear it. Both are Tubig-only and neither reveals direction.
+	_ensure_danger_music().track_player(local_player, not is_sili)
 
 	# Only a Tubig can be eliminated, so the Sili never needs one of these.
 	if not is_sili and local_player != null:
@@ -238,6 +290,18 @@ func _configure_local_hud() -> void:
 ## Created on demand and only once. _configure_local_hud runs again every time
 ## a peer finishes spawning, and a second SpectatorView would mean a second
 ## Camera2D quietly fighting the first for the viewport.
+## Created on demand and only once, for the same reason as the spectator:
+## _configure_local_hud runs again on every spawn, and a second DangerMusic
+## would mean two nodes racing to start and stop the same sting.
+func _ensure_danger_music() -> DangerMusic:
+	if _danger_music != null and is_instance_valid(_danger_music):
+		return _danger_music
+	_danger_music = DangerMusic.new()
+	_danger_music.name = "DangerMusic"
+	add_child(_danger_music)
+	return _danger_music
+
+
 func _ensure_spectator() -> SpectatorView:
 	if _spectator != null and is_instance_valid(_spectator):
 		return _spectator
@@ -393,6 +457,20 @@ func _load_map() -> void:
 	map_holder.add_child(map_instance)
 
 	spawn_points_root = map_instance.get_node_or_null("SpawnPoints")
+
+	# The contract asks for SpawnPoints as a direct child, but a map that
+	# buries it one level deeper is a placement mistake, not a reason to throw
+	# every player at the fallback coordinates - which is a silent failure that
+	# looks like "the spawns don't work" rather than like a broken map. Search
+	# the whole subtree before giving up, and say so loudly enough to get fixed.
+	if spawn_points_root == null:
+		var found := map_instance.find_children("SpawnPoints", "Node2D", true, false)
+		if not found.is_empty():
+			spawn_points_root = found[0]
+			push_warning(
+				"Arena: map '%s' has SpawnPoints at '%s' instead of the map root. Using it anyway - see the contract in map_registry.gd." % [
+					map_id, map_instance.get_path_to(spawn_points_root)])
+
 	if spawn_points_root == null:
 		push_error("Arena: map '%s' has no SpawnPoints - see the contract in map_registry.gd." % map_id)
 
@@ -416,7 +494,7 @@ func _drop_panel_connections() -> void:
 ##
 ## This used to end the match as soon as nobody was in the NORMAL state, which
 ## counted a burning player as already beaten. Burning is temporary by design:
-## they are rooted, but a teammate has fifteen seconds to reach them. Ending
+## they are rooted, but a teammate has thirty seconds to reach them. Ending
 ## there threw away the most dramatic moment the game has - four burning
 ## players and one rescue channel running - and made the rescue mechanic
 ## meaningless exactly when it mattered most. Now a burn has to actually time

@@ -66,8 +66,34 @@ const SILI_SPEED_STAGES: Array = [
 ]
 
 
+## A fountain SLOW roll trims the Sili's speed for a few seconds (see
+## fountain.gd). It lives here rather than on the Sili's own script because
+## every peer reads this function each frame to draw the Sili at the right
+## speed, and they all have to arrive at the same number - so the trim has to
+## sit on the same synced clock the stage ramp already rides on.
+var _slow_factor: float = 1.0
+var _slow_remaining: float = 0.0
+
+
 func sili_speed_multiplier() -> float:
-	return float(SILI_SPEED_STAGES[_sili_speed_stage][1])
+	return float(SILI_SPEED_STAGES[_sili_speed_stage][1]) * _slow_factor
+
+
+## Called on EVERY peer from Fountain._rpc_apply_buff, which is already an
+## RPC - so this deliberately does not broadcast again. A second slow landing
+## while one is running refreshes the timer rather than stacking the factor,
+## which keeps the worst case bounded no matter how the rolls fall.
+func apply_sili_slow(factor: float, duration: float) -> void:
+	_slow_factor = clampf(factor, 0.1, 1.0)
+	_slow_remaining = maxf(_slow_remaining, duration)
+
+
+func _tick_sili_slow(delta: float) -> void:
+	if _slow_remaining <= 0.0:
+		return
+	_slow_remaining = maxf(0.0, _slow_remaining - delta)
+	if _slow_remaining == 0.0:
+		_slow_factor = 1.0
 
 
 ## Any peer may report an event; it's a cosmetic feed, so there's nothing worth
@@ -139,8 +165,11 @@ func _process(delta: float) -> void:
 
 	# Before the authority gate on purpose: clients never run the countdown
 	# themselves, but they do receive time_remaining, so they can work out the
-	# current speed stage locally instead of waiting on another broadcast.
+	# current speed stage locally instead of waiting on another broadcast. The
+	# fountain slow is ticked here for the same reason - it was handed to every
+	# peer at once, so every peer has to count it down.
 	_update_sili_speed_stage()
+	_tick_sili_slow(delta)
 
 	if not _is_authority():
 		return
@@ -215,6 +244,8 @@ func _rpc_start_pregame(duration: float) -> void:
 	is_over = false
 	are_rescues_locked = false
 	_sili_speed_stage = 0
+	_slow_factor = 1.0
+	_slow_remaining = 0.0
 	_pregame_remaining = duration
 	time_remaining = MATCH_DURATION
 	pregame_started.emit(duration)
@@ -231,6 +262,8 @@ func _rpc_start_match(duration: float) -> void:
 	is_over = false
 	are_rescues_locked = false
 	_sili_speed_stage = 0
+	_slow_factor = 1.0
+	_slow_remaining = 0.0
 	time_remaining = duration
 	if was_pregame:
 		pregame_finished.emit()

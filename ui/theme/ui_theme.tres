@@ -116,6 +116,8 @@ corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_flat_focus"]
+
 [resource]
 default_font = ExtResource("1_font")
 default_font_size = 22
@@ -132,6 +134,8 @@ Button/styles/focus = SubResource("StyleBoxFlat_btn_focus")
 Button/styles/hover = SubResource("StyleBoxFlat_btn_hover")
 Button/styles/normal = SubResource("StyleBoxFlat_btn_normal")
 Button/styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
+FlatButton/base_type = &"Button"
+FlatButton/styles/focus = SubResource("StyleBoxEmpty_flat_focus")
 CheckBox/colors/font_outline_color = Color(0, 0, 0, 1)
 CheckBox/constants/outline_size = 6
 CheckBox/font_sizes/font_size = 24

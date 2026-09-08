@@ -7,6 +7,7 @@
 [ext_resource type="Texture2D" uid="uid://bi6j41yi8p7hi" path="res://game/assets/art/ui/background/vegetation_tree_palm3.png" id="5_ca08b"]
 [ext_resource type="Texture2D" uid="uid://ctqe00v7026s" path="res://game/assets/art/ui/background/vegetation_tree_palm5.png" id="6_lgnx5"]
 [ext_resource type="Texture2D" uid="uid://bdc1ex5p0hmfs" path="res://game/assets/art/ui/background/vegetation_tree_palm6.png" id="7_1djn3"]
+[ext_resource type="Texture2D" uid="uid://o7d0r76t2fse" path="res://game/assets/art/trophy.png" id="8_lgnx5"]
 
 [node name="TitleScreen" type="Control" unique_id=1703636514]
 layout_mode = 3
@@ -41,6 +42,7 @@ grow_vertical = 2
 scale = Vector2(0.29266283, 0.29266283)
 mouse_filter = 2
 texture = ExtResource("4_rhiq2")
+metadata/_edit_lock_ = true
 
 [node name="palm" type="TextureRect" parent="background" unique_id=1233135666]
 modulate = Color(0.52156866, 0.52156866, 0.52156866, 1)
@@ -124,34 +126,54 @@ layout_mode = 2
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Host Game"
 flat = true
+theme_type_variation = &"FlatButton"
 
 [node name="JoinButton" type="Button" parent="VBox" unique_id=100553706]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Join Game"
 flat = true
+theme_type_variation = &"FlatButton"
 
 [node name="HowToButton" type="Button" parent="VBox" unique_id=418277301]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "How to Play"
 flat = true
+theme_type_variation = &"FlatButton"
 
 [node name="SettingsButton" type="Button" parent="VBox" unique_id=316910047]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Settings"
 flat = true
+theme_type_variation = &"FlatButton"
 
 [node name="ExitButton" type="Button" parent="VBox" unique_id=2003637775]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Exit"
 flat = true
+theme_type_variation = &"FlatButton"
 
 [node name="StatusLabel" type="Label" parent="VBox" unique_id=480226216]
 layout_mode = 2
 autowrap_mode = 2
+
+[node name="LeaderboardButton" type="Button" parent="." unique_id=325537054]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -50.0
+offset_bottom = 36.0
+grow_horizontal = 0
+action_mode = 0
+icon = ExtResource("8_lgnx5")
+flat = true
+theme_type_variation = &"FlatButton"
+icon_alignment = 1
+expand_icon = true
 
 [node name="JoinPanel" type="Control" parent="." unique_id=1759550424]
 visible = false

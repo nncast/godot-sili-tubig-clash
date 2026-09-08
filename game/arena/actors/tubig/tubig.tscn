@@ -724,7 +724,7 @@ position = Vector2(0, 4)
 shape = SubResource("RectangleShape2D_3sajy")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1241409087]
-zoom = Vector2(3, 3)
+zoom = Vector2(2, 2)
 position_smoothing_enabled = true
 
 [node name="RescueIndicator" type="ProgressBar" parent="." unique_id=694303160]

@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://dpiqhjfb2y2cv"]
 
 [ext_resource type="Script" uid="uid://uq3omdhc1jx3" path="res://game/arena/arena.gd" id="1_kdgho"]
 [ext_resource type="Script" uid="uid://bvyqnwddex64m" path="res://ui/hud/threat_vignette.gd" id="3_ksk8y"]
@@ -7,10 +7,11 @@
 [ext_resource type="Texture2D" uid="uid://dgvb1wyiyleho" path="res://game/assets/art/ui/Hud_Menu/settings.png" id="6_ksk5a"]
 [ext_resource type="Script" uid="uid://l0nvnaj46rxs" path="res://ui/hud/pregame_reveal.gd" id="7_qk5vs"]
 [ext_resource type="Script" uid="uid://bwr4vw5c3gkki" path="res://ui/hud/match_result.gd" id="8_ytb83"]
+
 [node name="MultiplayerArena" type="Node2D" unique_id=1328311220]
 script = ExtResource("1_kdgho")
 
-[node name="MapHolder" type="Node2D" parent="."]
+[node name="MapHolder" type="Node2D" parent="." unique_id=565987603]
 
 [node name="SiliSpawner" type="MultiplayerSpawner" parent="." unique_id=162836291]
 spawn_path = NodePath("../SiliContainer")
@@ -86,18 +87,18 @@ horizontal_alignment = 1
 metadata/_edit_use_anchors_ = true
 
 [node name="SettingsButton" type="Button" parent="HUD" unique_id=1383247187]
-tooltip_text = "Audio settings"
-anchors_preset = 1
-anchor_left = 1.0
+anchors_preset = -1
+anchor_left = 0.9895833
 anchor_right = 1.0
-offset_left = -247.0
-offset_top = 16.0
-offset_right = -207.0
-offset_bottom = 56.0
+anchor_bottom = 0.018518519
+offset_left = -239.0
+offset_top = 2.0
+offset_right = -199.0
+offset_bottom = 42.0
 grow_horizontal = 0
+tooltip_text = "Audio settings"
 icon = ExtResource("6_ksk5a")
 flat = true
-alignment = 2
 icon_alignment = 1
 expand_icon = true
 metadata/_edit_use_anchors_ = true
@@ -224,6 +225,7 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("7_qk5vs")
 metadata/_edit_use_anchors_ = true
+metadata/_edit_lock_ = true
 
 [node name="ResultLayer" type="CanvasLayer" parent="." unique_id=2091916671]
 layer = 30
@@ -236,6 +238,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("8_ytb83")
+metadata/_edit_lock_ = true
 
 [node name="SiliContainer" type="Node2D" parent="." unique_id=327789985]
 

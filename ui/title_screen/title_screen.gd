@@ -21,8 +21,8 @@ extends Control
 @onready var join_cancel_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinCancelButton
 
 var _leaderboard_panel: Control = null
-var _leaderboard_button: Button = null
 
+@onready var leaderboard_button: Button = $LeaderboardButton
 @onready var how_to_panel: Control = $HowToPanel
 @onready var how_to_body: RichTextLabel = $HowToPanel/Panel/Margin/VBox/Body
 @onready var how_to_close_button: Button = $HowToPanel/Panel/Margin/VBox/CloseButton
@@ -186,25 +186,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-## Added in code rather than to the .tscn: the button has to slot into an
-## existing VBox at a specific position, and the panel is a sibling modal like
-## the others. Doing both here keeps the whole feature in one place instead of
-## split across a scene file.
+## The BUTTON lives in title_screen.tscn - it is a corner icon, positioned and
+## given its trophy art there, which is a layout decision and belongs in the
+## scene. Only the panel is built here, for the same reason match_result.gd
+## builds its own: the contents are a variable-length table driven by saved
+## data, with very little worth laying out by hand.
 func _build_leaderboard() -> void:
 	_leaderboard_panel = load("res://ui/leaderboard/leaderboard_panel.gd").new()
 	_leaderboard_panel.name = "LeaderboardPanel"
 	add_child(_leaderboard_panel)
-
-	_leaderboard_button = Button.new()
-	_leaderboard_button.name = "LeaderboardButton"
-	_leaderboard_button.text = "Leaderboard"
-	_leaderboard_button.custom_minimum_size = host_button.custom_minimum_size
-	_leaderboard_button.pressed.connect(_on_leaderboard_pressed)
-	var column := host_button.get_parent() as VBoxContainer
-	column.add_child(_leaderboard_button)
-	# Under "How to Play", above "Settings": grouped with the other things that
-	# open a panel rather than with the two that start a game.
-	column.move_child(_leaderboard_button, settings_button.get_index())
+	leaderboard_button.pressed.connect(_on_leaderboard_pressed)
 
 
 func _on_leaderboard_pressed() -> void:

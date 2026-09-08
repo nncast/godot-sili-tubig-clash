@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c2ckxx3t7ukq4"
-path="res://.godot/imported/cursor.png-2b35c7421feff1f1393be40bc6986d65.ctex"
+uid="uid://o7d0r76t2fse"
+path="res://.godot/imported/trophy.png-a332f87a0e3d74edc813dec4779dad47.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://game/assets/art/cursor.png"
-dest_files=["res://.godot/imported/cursor.png-2b35c7421feff1f1393be40bc6986d65.ctex"]
+source_file="res://game/assets/art/ui/Hud_Menu/trophy.png"
+dest_files=["res://.godot/imported/trophy.png-a332f87a0e3d74edc813dec4779dad47.ctex"]
 
 [params]
 

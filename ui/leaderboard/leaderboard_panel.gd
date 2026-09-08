@@ -23,7 +23,12 @@ var _confirming_reset := false
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# _and_offsets_, not set_anchors_preset. The plain version moves the anchors
+	# and leaves the offsets where they were, so this Control kept whatever size
+	# it happened to have when it was added - which is zero, since nothing else
+	# sizes it. Everything inside then inherited that, and the "centred" panel
+	# ended up hugging the top-left corner.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	visible = false
 	_build()
 	Leaderboard.changed.connect(_refresh)
@@ -44,18 +49,28 @@ func _build() -> void:
 	var dim := ColorRect.new()
 	dim.name = "Dim"
 	dim.color = Color(0.02, 0.03, 0.06, 0.72)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
+
+	# A CenterContainer does the centring, rather than anchors on the panel.
+	#
+	# PRESET_CENTER only moves the ANCHORS to the middle - it does not touch
+	# the offsets, so the panel's top-left corner landed on the centre point
+	# and the whole box hung down and to the right of it. Getting that right by
+	# hand would mean re-deriving offsets from the content's minimum size every
+	# time a row is added or removed, which is exactly what a CenterContainer
+	# already does. Same approach match_result.gd uses for its verdict column.
+	var centre := CenterContainer.new()
+	centre.name = "Centre"
+	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(centre)
 
 	var panel := PanelContainer.new()
 	panel.name = "Panel"
 	# No stylebox override: PanelContainer is themed in ui/theme/ui_theme.tres,
 	# so this picks up the same shell as the Join and How To dialogs for free.
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	panel.custom_minimum_size = Vector2(700, 0)
-	add_child(panel)
+	centre.add_child(panel)
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:

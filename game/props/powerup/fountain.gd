@@ -241,13 +241,27 @@ func _grant(peer_id: int, rolled: Array) -> void:
 @rpc("authority", "call_local", "reliable")
 func _rpc_apply_buff(peer_id: int, kind_index: int, amount: int) -> void:
 	var drinker := _body_for_peer(peer_id)
+	# Is the drinker's body OURS to write to? The escape budget is replicated
+	# from the owning peer outwards (see tubig.tscn's MPSync), so only the
+	# owner may change it. Every peer used to run the grant against its own
+	# copy, which meant four machines incrementing a number that a fifth was
+	# simultaneously replicating over the top of - the count on a remote copy
+	# drifted upward and never came back down, because the SPEND only ever
+	# happened on the owner. One writer, one truth.
+	var drinker_is_ours: bool = (
+		drinker != null
+		and (not _is_networked() or drinker.is_multiplayer_authority()))
+	# How many escapes actually landed. Fewer than `amount` when the drinker was
+	# already at the ceiling; -1 on the peers that aren't the drinker and so
+	# have no business asking.
+	var granted := -1
 
 	match kind_index:
 		Buff.TUNNEL:
-			if drinker != null and drinker.has_method("grant_tunnel_uses"):
-				drinker.grant_tunnel_uses(amount)
+			if drinker_is_ours and drinker.has_method("grant_tunnel_uses"):
+				granted = int(drinker.grant_tunnel_uses(amount))
 		Buff.STAMINA:
-			if drinker != null and drinker.has_method("grant_stamina_buff"):
+			if drinker_is_ours and drinker.has_method("grant_stamina_buff"):
 				drinker.grant_stamina_buff(STAMINA_DURATION)
 		Buff.SLOW:
 			MatchManager.apply_sili_slow(SLOW_FACTOR, SLOW_DURATION)
@@ -262,11 +276,19 @@ func _rpc_apply_buff(peer_id: int, kind_index: int, amount: int) -> void:
 			MatchManager.tubig_name(_name_of(peer_id)),
 			_describe(kind_index, amount)], "buff")
 
+	# Said out loud, and only to the player it happened to. A roll that gets
+	# clamped by the ceiling is the one case where the feed line and the number
+	# on screen disagree, and staying quiet about it is what made a full budget
+	# look like a broken fountain.
+	if granted >= 0 and granted < amount:
+		MatchManager.event_logged.emit(
+			"Escape budget full - %d of +%d wasted" % [amount - granted, amount], "warning")
+
 
 func _describe(kind: int, amount: int) -> String:
 	match kind:
 		Buff.TUNNEL:
-			return "+%d tunnel use%s" % [amount, "" if amount == 1 else "s"]
+			return "+%d escape%s" % [amount, "" if amount == 1 else "s"]
 		Buff.STAMINA:
 			return "stamina surge (%ds)" % int(STAMINA_DURATION)
 		Buff.SLOW:

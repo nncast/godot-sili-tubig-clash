@@ -17,6 +17,13 @@ const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
 ## still worth making, red once it probably isn't.
 const BURN_TIMER_COLOR := Color(1.0, 0.78, 0.30)
 const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.42, 0.36)
+## Escape (tunnel trip) counter on each row. Purple, matching the tunnel mouth
+## in tunnel.gd and the tagged-teammate guide line on the mini-map - the map
+## already teaches that purple means "the tunnel network", so the counter joins
+## that vocabulary instead of inventing a fifth colour.
+const ESCAPE_COLOR := Color(0.72, 0.52, 0.95)
+const ESCAPE_SPENT_COLOR := Color(0.45, 0.45, 0.48)
+const ESCAPE_GLYPH := "⇄"
 
 @onready var match_label: Label = $HUD/MatchLabel
 @onready var team_panel: VBoxContainer = $HUD/TeamPanel
@@ -322,7 +329,7 @@ func _refresh_team_state() -> void:
 	if not is_inside_tree():
 		return
 
-	var previous_count := _tubig_players.size()
+	var previous_players := _tubig_players
 	_tubig_players = get_tree().get_nodes_in_group("tubig")
 
 	for tubig in _tubig_players:
@@ -331,9 +338,13 @@ func _refresh_team_state() -> void:
 			heat.burned.connect(_check_for_sili_win)
 			heat.died.connect(_check_for_sili_win)
 
-	# Rebuilding is cheap for a handful of rows and keeps this correct no
-	# matter what order peers finish spawning in.
-	if _tubig_players.size() != previous_count:
+	# Compares the actual roster, not just how big it is. The old test was
+	# `size() != previous_count`, which misses the case where one player leaves
+	# and another spawns before the next refresh: the count is unchanged, so
+	# the panel kept a row wired to a freed body and showed a departed player's
+	# name with a dot that would never update again. Cheap for a handful of
+	# rows, and correct no matter what order peers finish spawning in.
+	if _tubig_players != previous_players:
 		_build_team_panel()
 	_configure_local_hud()
 
@@ -469,8 +480,15 @@ func _build_team_panel() -> void:
 		hearts_row.add_theme_constant_override("separation", 2)
 		row.add_child(hearts_row)
 
+		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
+
 		var heart_icons: Array = []
-		for i in 3:
+		# Sized off the Tubig's own MAX_LIVES rather than a hardcoded 3, so
+		# retuning lives for a playtest can't leave the panel drawing three
+		# hearts for a player who has five. Falls back to 3 if HeatStatus
+		# somehow isn't there yet, which is the value the scene ships with.
+		var heart_count: int = heat.MAX_LIVES if heat != null else 3
+		for i in maxi(1, heart_count):
 			var heart := TextureRect.new()
 			heart.custom_minimum_size = Vector2(14, 14)
 			heart.texture = HEART_TEXTURE
@@ -479,7 +497,36 @@ func _build_team_panel() -> void:
 			hearts_row.add_child(heart)
 			heart_icons.append(heart)
 
-		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
+		# Each Tubig's OWN escape budget, one number per row.
+		#
+		# This column exists because "are the escape counts shared?" was a
+		# question the HUD gave you no way to answer: the count only ever
+		# appeared in your own tunnel prompt, so if one player spent two trips
+		# there was nothing on screen to confirm that everybody else still had
+		# theirs. Four separate numbers side by side settle it at a glance, and
+		# they also make the resource readable as a team - you can see who can
+		# still cross the map to reach a burning ally and who is walking.
+		#
+		# Fed by the replicated tunnel_uses_left, so these are the real values
+		# from each owner's machine, not a local guess.
+		var escape_label := Label.new()
+		escape_label.custom_minimum_size = Vector2(34, 0)
+		escape_label.add_theme_font_size_override("font_size", 13)
+		escape_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		escape_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		escape_label.tooltip_text = "Escapes (tunnel trips) left"
+		row.add_child(escape_label)
+
+		var update_escapes := func(uses_left: int):
+			if not is_instance_valid(row) or not is_instance_valid(escape_label):
+				return
+			escape_label.text = "%s%d" % [ESCAPE_GLYPH, uses_left]
+			escape_label.add_theme_color_override("font_color",
+				ESCAPE_SPENT_COLOR if uses_left <= 0 else ESCAPE_COLOR)
+
+		if tubig.has_signal("escapes_changed"):
+			_track_connection(tubig, &"escapes_changed", update_escapes)
+			update_escapes.call(int(tubig.get("tunnel_uses_left")))
 
 		# Read straight off HeatStatus instead of caching a flag. GDScript
 		# lambdas capture by VALUE, so the previous version's shared

@@ -74,7 +74,7 @@ var _last_struggle_at: float = -999.0
 ## Same property-with-setter reasoning as `state` below: HeatSync assigns this
 ## directly on remote peers, and routing through the setter keeps
 ## lives_changed firing on every screen rather than only the server's.
-var lives_left: int = MAX_LIVES:
+var lives_left: int = 3:
 	set(value):
 		if value == lives_left:
 			return
@@ -136,6 +136,22 @@ var state: State = State.NORMAL:
 			cooled.emit()
 		elif value == State.DEAD:
 			died.emit()
+
+
+## `var lives_left = MAX_LIVES` looked right and was not. A member initialiser
+## runs during _init(), which is BEFORE the scene applies exported values to the
+## object - so it read the SCRIPT default for MAX_LIVES and quietly ignored
+## whatever was set in the inspector. Anyone retuning lives for a playtest got
+## three regardless, and the only symptom was the number being wrong.
+##
+## Seeded on the server only: HeatStatus's authority is peer 1 (see arena.gd's
+## _build_player) and lives_left is replicated outward from there, so a client
+## writing its own starting value would just be a local guess about to be
+## overwritten - and for one frame it could show a full row of hearts for
+## somebody who is already down to one.
+func _ready() -> void:
+	if not _is_networked() or is_multiplayer_authority():
+		lives_left = MAX_LIVES
 
 
 func _process(delta: float) -> void:

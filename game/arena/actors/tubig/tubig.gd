@@ -4,21 +4,37 @@ extends CharacterBody2D
 ## registers you instantly and the next tap bounces you straight back.
 const TUNNEL_COOLDOWN := 1.0
 
-## Tunnel trips per match. The cooldown alone only slows spamming down; a hard
-## budget is what makes reaching a mouth a decision rather than a free reset
-## button you mash every time the Sili gets close.
 ## Greyed-out heart. Kept as a constant so the player HUD and the team panel
 ## can't drift apart.
 const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
 
-const TUNNEL_USES_MAX := 3
+## --- Escapes (tunnel trips) ---
+## PER PLAYER, ALWAYS. This is one Tubig's own budget and nothing about it is
+## pooled: spending one here does not touch anybody else's count, and a fountain
+## grant lands on the drinker alone. The count is replicated (see tubig.tscn's
+## MPSync) so every peer can draw every teammate's own number in the team panel
+## - which is also how you can SEE that the budgets are separate rather than
+## having to take it on trust.
+##
+## The cooldown alone only slows spamming down; a hard budget is what makes
+## reaching a mouth a decision rather than a free reset button you mash every
+## time the Sili gets close.
+@export var TUNNEL_USES_MAX: int = 3
 
-## Hard ceiling on tunnel charges however many fountain rolls land on you. Four
-## drinks exist in a round (one per Sili speed stage) and a lucky run of +3s
-## would otherwise hand one player twelve free map-crossings, which stops being
-## a decision and starts being an exploit - and "balanced mechanics, no unfair
+## Hard ceiling on escapes however many fountain rolls land on you. Four drinks
+## exist in a round (one per Sili speed stage) and a lucky run of +3s would
+## otherwise hand one player twelve free map-crossings, which stops being a
+## decision and starts being an exploit - and "balanced mechanics, no unfair
 ## advantage" is its own judging line.
-const TUNNEL_USES_CEILING := 6
+##
+## Raised from 6, which was only three grants of headroom above the starting
+## budget and was being hit often enough that a drink could roll +2 and visibly
+## do nothing. A grant that silently evaporates reads as the fountain being
+## broken. Two things changed together:
+##   - the ceiling now leaves real room above the starting budget, and
+##   - grant_tunnel_uses() SAYS SO in the feed when it does have to clamp,
+##     instead of swallowing the difference in silence.
+@export var TUNNEL_USES_CEILING: int = 9
 
 ## What a fountain STAMINA roll is worth: sprint costs a third less and recovers
 ## half again as fast, for the duration the fountain hands over.
@@ -55,6 +71,34 @@ const FRICTION = 1200.0
 @export var RESCUE_BURST_TIME: float = 2.0
 @export var RESCUE_BURST_SPEED_SCALE: float = 1.35
 
+## --- Death tint ---
+## What a burned-out Tubig looks like once the rescue window has closed.
+##
+## ASH, NOT RED, and that is a readability decision rather than a taste one.
+## Red already has exactly one meaning everywhere else on screen: TAGGED AND
+## STILL SAVABLE. It is the team-panel dot the moment somebody is caught, and
+## the whole point of that colour is "drop what you are doing and run over
+## there". Painting a corpse red would send four people sprinting across the
+## map towards a body they cannot do anything with - the single most expensive
+## mistake this game lets you make, because the rescue channel is six seconds
+## and the Sili is faster than you are.
+##
+## Grey is already the game's word for gone: arena.gd's TUBIG_DEAD_COLOR greys
+## the team-panel dot and drains the whole row, and minimap.gd fades the dot to
+## 35% alpha. Tinting the body to match means the in-world sprite, the panel and
+## the mini-map all say the same thing, and the player learns one rule instead
+## of three.
+##
+## It is a multiply, so it darkens and cools the existing art rather than
+## replacing it - the Tubig sprite is blue-ish, so a cool grey lands as ash. If
+## you want to try the red version anyway, this is exported: set it to something
+## like Color(0.62, 0.30, 0.26) in the inspector and look at both in a real
+## round before deciding.
+@export var DEAD_TINT: Color = Color(0.42, 0.44, 0.50)
+## Seconds the drain to ash takes. Instant is fine mechanically but reads as a
+## rendering glitch; a short fade reads as the character going out.
+@export var DEAD_TINT_FADE: float = 0.6
+
 ## --- Stealth ---
 @export var CONCEAL_SETTLE_TIME: float = 0.35  # how long you must hold still inside a hiding spot
 @export var CONCEALED_SPRITE_ALPHA: float = 0.55  # local-only feedback, not real invisibility
@@ -68,6 +112,10 @@ signal exhausted
 signal recovered_from_exhaustion
 signal rescue_progress(progress: float)  # 0.0 - 1.0, for a channel bar
 signal concealment_changed(is_concealed: bool)
+## This player's own escape budget changed. Fires on every peer (the value is
+## replicated), which is what lets the team panel draw a separate, live count
+## for each Tubig rather than one shared number.
+signal escapes_changed(uses_left: int)
 
 var stamina: float = MAX_STAMINA
 var is_exhausted: bool = false
@@ -94,6 +142,9 @@ var _conceal_timer: float = 0.0
 var _sighting_accum: float = 0.0
 var _last_reported_sighting: bool = false
 var _hidden_label: Label = null
+## The in-flight death-tint fade, so a second state change can cancel it rather
+## than run a competing tween on the same three channels.
+var _tint_tween: Tween = null
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ui_layer: CanvasLayer = $ui
@@ -110,7 +161,19 @@ var _tunnel_prompt: Label = null
 var _rescue_prompt: Label = null
 ## Tracked per Tubig and spent locally, like stamina. Players are rebuilt when
 ## the arena reloads, so a replay hands everyone a fresh set.
-var tunnel_uses_left: int = TUNNEL_USES_MAX
+##
+## Same property-with-setter trick as is_concealed and HeatStatus.lives_left,
+## and for the same reason: MultiplayerSynchronizer assigns this directly on
+## remote peers, so routing through a setter is what keeps escapes_changed
+## firing on EVERY screen instead of only on the machine that spent the trip.
+## Without that the team panel would show a frozen number for everyone else.
+var tunnel_uses_left: int = 3:
+	set(value):
+		var clamped: int = clampi(value, 0, TUNNEL_USES_CEILING)
+		if clamped == tunnel_uses_left:
+			return
+		tunnel_uses_left = clamped
+		escapes_changed.emit(clamped)
 ## Set by whichever Fountain we're standing in - see fountain.gd. Exactly the
 ## same push-from-the-prop pattern as _nearby_tunnel, and for the same reason:
 ## Sili has no set_nearby_fountain(), so the Sili is never even offered it.
@@ -127,6 +190,19 @@ func _ready() -> void:
 	if multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
 		ui_layer.visible = false
 
+	# Seeded HERE, not in the member initialiser. A `var x = EXPORTED_VAR`
+	# initialiser runs during _init(), which is BEFORE the scene's exported
+	# values are applied to the object - so it always read the script default
+	# and silently ignored anything set in the inspector. Anyone who retuned
+	# MAX_STAMINA or TUNNEL_USES_MAX for a playtest got the old number.
+	#
+	# Only the owner seeds the escape budget: on every other peer the value
+	# arrives by replication, and writing it here as well would briefly show a
+	# fresh 3 for a teammate who has already spent two.
+	stamina = MAX_STAMINA
+	if not multiplayer.has_multiplayer_peer() or is_multiplayer_authority():
+		tunnel_uses_left = TUNNEL_USES_MAX
+
 	stamina_bar.max_value = MAX_STAMINA
 	stamina_bar.value = stamina
 	stamina_changed.connect(_on_stamina_changed)
@@ -140,6 +216,11 @@ func _ready() -> void:
 	heat_status.immunity_changed.connect(_on_immunity_changed)
 
 	_update_hearts(heat_status.lives_left)
+	# A peer that builds this body AFTER the burn already timed out never sees
+	# the state_changed signal - it arrives with `state` already DEAD - so the
+	# tint has to be painted once up front or that corpse stays full-colour on
+	# that screen for the rest of the round.
+	_apply_death_tint(heat_status.is_dead())
 
 	rescue_indicator.visible = false
 
@@ -477,6 +558,13 @@ func _can_see_sili() -> bool:
 
 
 func _exit_tree() -> void:
+	# A rescuer who disconnects (or is despawned by a round change) mid-channel
+	# used to leave their target's progress bar frozen on screen at whatever
+	# percentage it had reached, counting down to a rescue that nobody was
+	# performing any more. _cancel_rescue_channel already sends the zero, it
+	# just never ran on this path.
+	_cancel_rescue_channel()
+
 	if not _last_reported_sighting:
 		return
 	_last_reported_sighting = false
@@ -523,7 +611,14 @@ func clear_nearby_fountain(fountain: Fountain) -> void:
 ## visible on screen instead of being something players have to learn by
 ## losing a rescue to it.
 func _try_interact() -> void:
-	if _find_burning_ally() != null:
+	# `and rescues_available()` is the fix for a dead key. Once rescues lock in
+	# the final quarter, a burning teammate is no longer a rescue target - but
+	# the old condition still handed the press to a channel that immediately
+	# refuses it, so a Tubig standing over a fallen ally in a tunnel mouth
+	# pressed E and got nothing at all: no rescue (locked), no drink, no
+	# escape. Deferring only when a rescue can actually happen lets the press
+	# fall through to the fountain and the tunnel the way it should.
+	if _find_burning_ally() != null and MatchManager.rescues_available():
 		return  # rescue is a hold, handled by _handle_rescue_channel
 	if _try_use_fountain():
 		return
@@ -546,9 +641,21 @@ func _try_use_fountain() -> bool:
 	return true
 
 
-## Applied by Fountain._rpc_apply_buff on the drinker's own machine.
-func grant_tunnel_uses(amount: int) -> void:
-	tunnel_uses_left = mini(TUNNEL_USES_CEILING, tunnel_uses_left + amount)
+## Applied by Fountain._rpc_apply_buff on the drinker's own machine, and ONLY
+## there - see the authority guard at that call site. This is the drinker's own
+## budget; no other Tubig's count is touched by it.
+##
+## Returns how many trips were actually added, which can be fewer than asked
+## for when the ceiling is in the way. The old version returned nothing and
+## clamped in silence, so a +2 roll landing on a nearly-full budget looked
+## exactly like a +2 roll that never fired - the reported symptom of "it gains
+## an escape but the number doesn't go up". The caller now says so in the feed.
+func grant_tunnel_uses(amount: int) -> int:
+	if amount <= 0:
+		return 0
+	var before := tunnel_uses_left
+	tunnel_uses_left = mini(TUNNEL_USES_CEILING, before + amount)
+	return tunnel_uses_left - before
 
 
 func grant_stamina_buff(duration: float) -> void:
@@ -608,8 +715,12 @@ func _update_tunnel_prompt() -> void:
 	if not should_show:
 		return
 	if tunnel_uses_left > 0:
-		_tunnel_prompt.text = "[E] Tunnel  (%dx)" % tunnel_uses_left
-		_tunnel_prompt.modulate = Color.WHITE
+		# Reads "3 / 9" rather than "3x". The ceiling was invisible, so a
+		# player sitting on a full budget had no way to know a fountain roll
+		# was about to be wasted on them - the number just stopped moving.
+		_tunnel_prompt.text = "[E] Tunnel  (%d / %d)" % [tunnel_uses_left, TUNNEL_USES_CEILING]
+		_tunnel_prompt.modulate = (
+			Color(1.0, 0.85, 0.45) if tunnel_uses_left >= TUNNEL_USES_CEILING else Color.WHITE)
 	else:
 		_tunnel_prompt.text = "Tunnel used up"
 		_tunnel_prompt.modulate = Color(0.65, 0.65, 0.68)
@@ -785,13 +896,68 @@ func _on_heat_state_changed(new_state: HeatStatus.State) -> void:
 		# the voice carries the identity. AudioManager gates it, so four tags in
 		# one scramble give one shout.
 		AudioManager.play_callout("anghang", global_position)
+		_apply_death_tint(false)
 	elif new_state == HeatStatus.State.DEAD:
 		AudioManager.play_sfx_at("eliminated", global_position)
+		_apply_death_tint(true)
 	elif new_state == HeatStatus.State.NORMAL:
+		_apply_death_tint(false)
 		AudioManager.play_sfx_at("rescue_complete", global_position)
 		# "Save!" - runs on every peer for the same reason the sfx does, so the
 		# Sili hears that the body they were circling just got up.
 		AudioManager.play_callout("save", global_position)
+
+
+## Drains the body to ash when the burn window closes, and restores it when the
+## round replays or a rescue lands (a rescue can't reach a DEAD player, but a
+## fresh round reuses these nodes, so the restore path has to exist).
+##
+## WHICH COLOUR CHANNEL, and why it matters. Three separate things tint this one
+## sprite and they must not overwrite each other:
+##
+##   modulate.a       - concealment (_on_concealment_changed)
+##   self_modulate    - the rescue-immunity flash (_on_immunity_changed)
+##   modulate.rgb     - this
+##
+## So this writes RGB and preserves whatever alpha concealment has set, exactly
+## as _on_concealment_changed writes alpha and preserves RGB. Stamping a whole
+## Color here would snap a concealed player back to opaque.
+##
+## Runs on EVERY peer because HeatStatus.state is replicated and this is called
+## from _on_heat_state_changed - so the Sili and every teammate see the body go
+## grey too, not just the player it happened to. A corpse that still looks alive
+## on someone else's screen is a teammate they will keep running towards.
+func _apply_death_tint(dead: bool) -> void:
+	if animated_sprite == null or not is_instance_valid(animated_sprite):
+		return
+
+	var target := DEAD_TINT if dead else Color.WHITE
+	var current := animated_sprite.modulate
+	# Alpha stays where concealment left it; only the colour drains.
+	var destination := Color(target.r, target.g, target.b, current.a)
+
+	if is_equal_approx(current.r, destination.r) and is_equal_approx(current.g, destination.g) \
+			and is_equal_approx(current.b, destination.b):
+		return
+
+	# A second state change during the fade (round replay) must not leave two
+	# tweens driving the same channels in opposite directions.
+	if _tint_tween != null and _tint_tween.is_valid():
+		_tint_tween.kill()
+
+	if DEAD_TINT_FADE <= 0.0:
+		animated_sprite.modulate = destination
+		return
+
+	# The three colour channels are tweened INDIVIDUALLY. Tweening `modulate`
+	# wholesale would capture alpha at kick-off and then fight concealment for
+	# the whole fade, so each channel gets its own sub-path track and alpha is
+	# simply never touched.
+	_tint_tween = create_tween()
+	_tint_tween.set_parallel(true)
+	_tint_tween.tween_property(animated_sprite, "modulate:r", destination.r, DEAD_TINT_FADE)
+	_tint_tween.tween_property(animated_sprite, "modulate:g", destination.g, DEAD_TINT_FADE)
+	_tint_tween.tween_property(animated_sprite, "modulate:b", destination.b, DEAD_TINT_FADE)
 
 
 func _play_heat_animation() -> void:

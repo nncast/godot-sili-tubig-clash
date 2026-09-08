@@ -14,7 +14,15 @@ extends Node
 ## 60s mark: half the match was spent unable to convert. 180s gives roughly
 ## twice the effective hunting window without changing the top speed.
 @export var MATCH_DURATION: float = 180.0
-@export var RESCUE_LOCK_FRACTION: float = 0.75  # rescues disabled after this fraction of time elapses
+## Rescues are disabled after this fraction of the match has elapsed.
+##
+## Nudged from 0.75 to 0.80 so it lands at 144s instead of 135s. At 0.75 it fired
+## on the same second as the old top speed stage, stacking "the Sili just got
+## much faster" and "your team can no longer undo a tag" into one moment; the
+## final 45 seconds stopped being playable for the Tubig side. The lock and the
+## last stage (155s) are now nine and twenty-five seconds apart respectively, so
+## each is something the team can react to on its own.
+@export var RESCUE_LOCK_FRACTION: float = 0.80
 @export var SYNC_INTERVAL: float = 0.25  # how often the server broadcasts the timer, in seconds
 @export var PREGAME_DURATION: float = 5.0  # role reveal + countdown before the clock starts
 
@@ -53,16 +61,40 @@ var _sili_speed_stage: int = 0
 ## Derived from time_remaining rather than broadcast separately: that value is
 ## already synced to every peer, so all clients arrive at the same multiplier
 ## on the same tick without another RPC to keep in step.
-## Retuned upward once the tunnel went in: a Tubig who reaches a mouth crosses
-## the map for free and resets a chase completely, so the Sili needs a harder
-## late game to keep the pressure curve. Starts sooner and tops out higher than
-## before (was 1.35x at 100s, in a 120s match).
+## RETUNED DOWNWARD, and the reason is that the note this table used to carry
+## was measuring the wrong thing. It claimed "the crossover where the Sili
+## out-walks a Tubig's walk arrives at 1.26x", and concluded that everything
+## below 1.26x was dead time the Sili couldn't convert.
+##
+## That comparison doesn't describe the game. Nobody walks a chase; both roles
+## sprint, and both roles run the IDENTICAL stamina model (100 pool, 25/s drain,
+## 20/s regen, 2s exhaustion - compare sili.gd and tubig.gd, they are the same
+## numbers). Once you account for the sprint duty cycle, both settle at ~137
+## px/s of effective ground speed, and the multiplier scales the Sili's whole
+## curve. So the real crossover is 1.00x: from the FIRST stage onward the Sili
+## gains on a Tubig running flat out in a straight line, and no later stage
+## unlocks anything - it only changes how fast the gap closes.
+##
+## Measured against 137 px/s, the old table meant the Sili closed a 400px lead
+## in 11s by the 65s mark and in under 5s by 135s. A 60% speed advantage is not
+## pressure, it is a formality: there is no route, no corner and no stamina
+## management that survives it, and the Tubig's only remaining play is to be
+## somewhere else already. Worse, the top stage landed at exactly 135s, the same
+## second RESCUE_LOCK_FRACTION cut rescues off - so the two biggest swings in
+## the Sili's favour fired simultaneously and the last 45 seconds were decided
+## before they started.
+##
+## The new curve tops out at 1.38x (closes 400px in ~7.7s, still decisive) and
+## the top stage now lands at 155s, AFTER the rescue lock rather than on top of
+## it. Two separate pressure steps instead of one cliff.
+##
+## Was: [0,1.0] [30,1.12] [65,1.26] [100,1.42] [135,1.60]
 const SILI_SPEED_STAGES: Array = [
 	[0.0, 1.0],
-	[30.0, 1.12],
-	[65.0, 1.26],
-	[100.0, 1.42],
-	[135.0, 1.60],
+	[35.0, 1.09],
+	[75.0, 1.18],
+	[115.0, 1.28],
+	[155.0, 1.38],
 ]
 
 

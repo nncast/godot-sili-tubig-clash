@@ -242,6 +242,45 @@ func _ready() -> void:
 	add_child(surface_audio)
 
 
+## --- Sprint input ---
+##
+## Sprint intent comes from the `run` ACTION and nowhere else. It used to be:
+##
+##     Input.is_action_pressed("run") or Input.is_key_pressed(KEY_SHIFT)
+##
+## and that `or` was two separate bugs wearing one line.
+##
+## FIRST: it is not a fallback, it is a duplicate. `run` is already bound to
+## Shift in the input map (project.godot, physical_keycode 4194325), so the
+## second half re-checks the same key by a different route - and the two routes
+## disagree. The action is bound by PHYSICAL keycode, which is
+## layout-independent; Input.is_key_pressed() tests the LAYOUT keycode. On any
+## non-US layout those are two different physical keys, so the raw check can
+## report Shift held when the key under the player's finger is something else
+## entirely. It also silently overrode the input map: rebinding run to another
+## key left Shift working anyway, because this line never consulted the map.
+##
+## SECOND, and this is the "sometimes it sprints on its own" report: the raw
+## check reads latched key state, so it survives things an action does not.
+## Alt-tabbing between a host and a client window on one machine - which is how
+## this gets playtested - is the reliable way to strand it: Shift goes down in
+## the window that has focus, focus moves, and the key-up never arrives in the
+## window that recorded the press. That window then sprints on its own until
+## you press and release Shift inside it again. Godot releases pressed ACTIONS
+## on focus-out, which is exactly why the action half of the line never showed
+## this and the raw half did.
+##
+## The belt-and-braces half of the fix is below: release the action ourselves on
+## focus-out rather than relying on the engine to have done it, since a held
+## sprint at the moment focus leaves is the one state we never want to come back
+## to.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT \
+			or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		if Input.is_action_pressed("run"):
+			Input.action_release("run")
+
+
 func _build_hidden_label() -> void:
 	_hidden_label = Label.new()
 	_hidden_label.text = "HIDDEN"
@@ -293,7 +332,7 @@ func _physics_process(delta: float) -> void:
 	_hide_struggle_prompt()
 
 	var input_vector := Input.get_vector("left", "right", "up", "down")
-	var wants_to_run := Input.is_action_pressed("run") or Input.is_key_pressed(KEY_SHIFT)
+	var wants_to_run := Input.is_action_pressed("run")
 	var wants_to_rescue := Input.is_action_pressed("rescue")
 
 	_tunnel_cooldown = maxf(0.0, _tunnel_cooldown - delta)
@@ -715,12 +754,22 @@ func _update_tunnel_prompt() -> void:
 	if not should_show:
 		return
 	if tunnel_uses_left > 0:
-		# Reads "3 / 9" rather than "3x". The ceiling was invisible, so a
-		# player sitting on a full budget had no way to know a fountain roll
-		# was about to be wasted on them - the number just stopped moving.
-		_tunnel_prompt.text = "[E] Tunnel  (%d / %d)" % [tunnel_uses_left, TUNNEL_USES_CEILING]
-		_tunnel_prompt.modulate = (
-			Color(1.0, 0.85, 0.45) if tunnel_uses_left >= TUNNEL_USES_CEILING else Color.WHITE)
+		# "x5", not "5 / 9". The fraction was my mistake: a slash between two
+		# numbers reads as PROGRESS - five of nine spent, or five of nine
+		# collected - when the left number is actually what you have LEFT and
+		# the right one is a cap you will almost never reach. Drinking a +2 on
+		# a fresh budget and watching it become "5 / 9" looked like a bug for
+		# exactly that reason, even though 3 + 2 = 5 was correct.
+		#
+		# The cap is still worth knowing, but only at the one moment it
+		# changes a decision: when you are sitting on it and a drink would be
+		# wasted. So it appears then and stays out of the way otherwise.
+		if tunnel_uses_left >= TUNNEL_USES_CEILING:
+			_tunnel_prompt.text = "[E] Tunnel  x%d  (full)" % tunnel_uses_left
+			_tunnel_prompt.modulate = Color(1.0, 0.85, 0.45)
+		else:
+			_tunnel_prompt.text = "[E] Tunnel  x%d" % tunnel_uses_left
+			_tunnel_prompt.modulate = Color.WHITE
 	else:
 		_tunnel_prompt.text = "Tunnel used up"
 		_tunnel_prompt.modulate = Color(0.65, 0.65, 0.68)

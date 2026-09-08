@@ -61,6 +61,21 @@ func _ready() -> void:
 	add_child(surface_audio)
 
 
+# --- Sprint input ---
+## Sprint intent comes from the `run` action only. See the long note on
+## tubig.gd's _notification for why the old
+## `or Input.is_key_pressed(KEY_SHIFT)` half was removed from both roles: it
+## re-checked Shift by layout keycode rather than physical keycode, it ignored
+## the input map entirely, and its latched key state survived a focus change -
+## so alt-tabbing between two windows on one machine left the character it
+## belonged to sprinting with nothing held down.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT \
+			or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		if Input.is_action_pressed("run"):
+			Input.action_release("run")
+
+
 func _physics_process(delta: float) -> void:
 	if multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
 		return
@@ -75,7 +90,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var input_vector := Input.get_vector("left", "right", "up", "down")
-	var wants_to_run := Input.is_action_pressed("run") or Input.is_key_pressed(KEY_SHIFT)
+	var wants_to_run := Input.is_action_pressed("run")
 	var is_moving := input_vector != Vector2.ZERO
 	var is_running := wants_to_run and is_moving and not is_exhausted and stamina > 0.0
 

@@ -137,105 +137,26 @@ offset_top = 8.0
 offset_right = -207.0
 offset_bottom = 48.0
 grow_horizontal = 0
-tooltip_text = "Audio settings"
+tooltip_text = "Settings"
 icon = SubResource("CompressedTexture2D_elpcd")
 flat = true
 icon_alignment = 1
 expand_icon = true
 metadata/_edit_use_anchors_ = true
 
-[node name="ExitButton" type="Button" parent="HUD" unique_id=1383247188]
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -327.0
-offset_top = 8.0
-offset_right = -287.0
-offset_bottom = 48.0
-grow_horizontal = 0
-tooltip_text = "Leave the match"
-theme_override_colors/font_color = Color(0.94, 0.62, 0.58, 1)
-theme_override_font_sizes/font_size = 20
-text = "Exit"
-flat = true
-
 [node name="GuideButton" type="Button" parent="HUD" unique_id=1383247189]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -287.0
-offset_top = 8.0
-offset_right = -247.0
-offset_bottom = 48.0
+offset_left = -304.0
+offset_top = -8.0
+offset_right = -240.0
+offset_bottom = 56.0
 grow_horizontal = 0
 tooltip_text = "Controls guide  (F1 / H)"
 theme_override_font_sizes/font_size = 22
 text = "?"
 flat = true
-
-[node name="ExitConfirmPanel" type="Control" parent="HUD" unique_id=1383247190]
-visible = false
-layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="Dim" type="ColorRect" parent="HUD/ExitConfirmPanel" unique_id=1383247191]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0, 0, 0, 0.6)
-
-[node name="Panel" type="PanelContainer" parent="HUD/ExitConfirmPanel" unique_id=1383247192]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -170.0
-offset_top = -70.0
-offset_right = 170.0
-offset_bottom = 70.0
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="Margin" type="MarginContainer" parent="HUD/ExitConfirmPanel/Panel" unique_id=1383247193]
-layout_mode = 2
-
-[node name="VBox" type="VBoxContainer" parent="HUD/ExitConfirmPanel/Panel/Margin" unique_id=1383247194]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="Message" type="Label" parent="HUD/ExitConfirmPanel/Panel/Margin/VBox" unique_id=1383247195]
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "Leave the match?"
-horizontal_alignment = 1
-autowrap_mode = 3
-
-[node name="ButtonsRow" type="HBoxContainer" parent="HUD/ExitConfirmPanel/Panel/Margin/VBox" unique_id=1383247196]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="ConfirmButton" type="Button" parent="HUD/ExitConfirmPanel/Panel/Margin/VBox/ButtonsRow" unique_id=1383247197]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.94, 0.62, 0.58, 1)
-theme_override_font_sizes/font_size = 20
-text = "Leave"
-
-[node name="CancelButton" type="Button" parent="HUD/ExitConfirmPanel/Panel/Margin/VBox/ButtonsRow" unique_id=1383247198]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 20
-text = "Cancel"
 
 [node name="GuidePanel" type="PanelContainer" parent="HUD" unique_id=1383247199]
 visible = false
@@ -285,9 +206,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -140.0
-offset_top = -110.0
+offset_top = -85.0
 offset_right = 140.0
-offset_bottom = 110.0
+offset_bottom = 85.0
 
 [node name="VBox" type="VBoxContainer" parent="HUD/SettingsPopup" unique_id=653669866]
 layout_mode = 2
@@ -381,18 +302,6 @@ custom_minimum_size = Vector2(46, 0)
 layout_mode = 2
 text = "100%"
 horizontal_alignment = 2
-
-[node name="PlayAgainButton" type="Button" parent="HUD/SettingsPopup/VBox" unique_id=1116732311]
-layout_mode = 2
-text = "Play Again"
-
-[node name="HostStatusLabel" type="Label" parent="HUD/SettingsPopup/VBox" unique_id=1116732312]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.75, 0.75, 0.8, 1)
-theme_override_font_sizes/font_size = 12
-text = "Waiting for host..."
-horizontal_alignment = 1
-autowrap_mode = 3
 
 [node name="LeaveGameButton" type="Button" parent="HUD/SettingsPopup/VBox" unique_id=1116732310]
 layout_mode = 2

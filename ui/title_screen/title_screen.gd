@@ -84,11 +84,12 @@ func _ready() -> void:
 func _on_host_pressed() -> void:
 	var err := NetworkManager.host_game(_resolved_name())
 	if err != OK:
+		var message: String
 		if err == ERR_ALREADY_IN_USE or err == ERR_CANT_CREATE:
-			status_label.text = "Port %d is already in use. Close any other copy of the game and try again." % NetworkManager.GAME_PORT
+			message = "Port %d is already in use. Close any other copy of the game and try again." % NetworkManager.GAME_PORT
 		else:
-			status_label.text = "Couldn't host (error %s)." % err
-		status_label.add_theme_color_override("font_color", ERROR_COLOR)
+			message = "Couldn't host (error %s)." % err
+		ModalDialog.show_message("Couldn't Host", message, ERROR_COLOR)
 		return
 	get_tree().change_scene_to_file("res://ui/lobby/lobby.tscn")
 
@@ -96,7 +97,7 @@ func _on_host_pressed() -> void:
 func _on_join_pressed() -> void:
 	_close_all_panels()
 	status_label.text = ""
-	_set_join_status("", INFO_COLOR)
+	_set_join_status("")
 	join_panel.visible = true
 	code_edit.text = ""
 	code_edit.grab_focus()
@@ -117,7 +118,7 @@ func _on_join_cancel_pressed() -> void:
 	_join_cancelled = true
 	NetworkManager.leave_game()
 	join_panel.visible = false
-	_set_join_status("", INFO_COLOR)
+	_set_join_status("")
 	join_button.grab_focus()
 	join_confirm_button.disabled = false
 	auto_join_button.disabled = false
@@ -125,17 +126,22 @@ func _on_join_cancel_pressed() -> void:
 
 ## Routes to whichever surface the player can actually see. A join attempt can
 ## outlive its dialog - the discovery lookup runs for five seconds and the
-## player may cancel partway through - and a failure written to a hidden panel
+## player may cancel partway through - and a status written to a hidden panel
 ## would be silently swallowed. If the modal is gone, the title screen's own
 ## status line takes the message instead.
-func _set_join_status(message: String, color: Color) -> void:
+##
+## Progress only ("Connecting to X...", "Looking for lobby X..."), never
+## errors - a failure is disruptive enough to warrant ModalDialog instead (see
+## _on_connection_failed and _on_code_lookup_failed), which also means it's
+## never silently lost the way a label behind a closed panel would be.
+func _set_join_status(message: String) -> void:
 	if join_panel.visible:
 		join_status.text = message
-		join_status.add_theme_color_override("font_color", color)
+		join_status.add_theme_color_override("font_color", INFO_COLOR)
 		status_label.text = ""
 	else:
 		status_label.text = message
-		status_label.add_theme_color_override("font_color", color)
+		status_label.add_theme_color_override("font_color", INFO_COLOR)
 
 
 ## Accepts either a 4-digit lobby code (LAN broadcast lookup) or the host's IP
@@ -149,19 +155,20 @@ func _on_join_confirm_pressed() -> void:
 
 	if _looks_like_ip(entry):
 		_auto_join_in_progress = false
-		_set_join_status("Connecting to %s..." % entry, INFO_COLOR)
+		_set_join_status("Connecting to %s..." % entry)
 		join_confirm_button.disabled = true
 		auto_join_button.disabled = true
 		NetworkManager.join_by_ip(entry, _resolved_name())
 		return
 
 	if entry.length() != 4 or not entry.is_valid_int():
-		_set_join_status("Enter the 4-digit lobby code, or the host's IP address.", ERROR_COLOR)
+		ModalDialog.show_message("Invalid Entry",
+			"Enter the 4-digit lobby code, or the host's IP address.", ERROR_COLOR)
 		code_edit.grab_focus()
 		return
 
 	_auto_join_in_progress = false
-	_set_join_status("Looking for lobby %s..." % entry, INFO_COLOR)
+	_set_join_status("Looking for lobby %s..." % entry)
 	join_confirm_button.disabled = true
 	auto_join_button.disabled = true
 	NetworkManager.join_by_code(entry, _resolved_name())
@@ -176,7 +183,7 @@ func _on_auto_join_pressed() -> void:
 		return
 
 	_auto_join_in_progress = true
-	_set_join_status("Searching this network for a game...", INFO_COLOR)
+	_set_join_status("Searching this network for a game...")
 	join_confirm_button.disabled = true
 	auto_join_button.disabled = true
 	NetworkManager.join_auto(_resolved_name())
@@ -197,7 +204,8 @@ func _on_player_list_changed() -> void:
 func _on_connection_failed() -> void:
 	if _join_cancelled:
 		return
-	_set_join_status(
+	_set_join_status("")
+	ModalDialog.show_message("Connection Failed",
 		"Couldn't reach the host.\nCheck you're on the same Wi-Fi, and that the host's firewall allows the game.",
 		ERROR_COLOR)
 	join_confirm_button.disabled = false
@@ -207,12 +215,13 @@ func _on_connection_failed() -> void:
 func _on_code_lookup_failed() -> void:
 	if _join_cancelled:
 		return
+	_set_join_status("")
 	if _auto_join_in_progress:
-		_set_join_status(
+		ModalDialog.show_message("No Game Found",
 			"No games found on this network.\nAsk the host for their lobby code or IP and type it in above.",
 			ERROR_COLOR)
 	else:
-		_set_join_status(
+		ModalDialog.show_message("No Game Found",
 			"No lobby found with that code.\nOn a phone hotspot, type the host's IP instead - it's on their lobby screen.",
 			ERROR_COLOR)
 	join_confirm_button.disabled = false

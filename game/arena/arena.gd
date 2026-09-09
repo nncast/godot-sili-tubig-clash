@@ -27,10 +27,6 @@ const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.36, 0.32)
 @onready var match_label: Label = $HUD/MatchLabel
 @onready var announcement_label: Label = $HUD/AnnouncementLabel
 @onready var team_panel: VBoxContainer = $HUD/TeamPanel
-@onready var exit_button: Button = $HUD/ExitButton
-@onready var exit_confirm_panel: Control = $HUD/ExitConfirmPanel
-@onready var exit_confirm_button: Button = $HUD/ExitConfirmPanel/Panel/Margin/VBox/ButtonsRow/ConfirmButton
-@onready var exit_cancel_button: Button = $HUD/ExitConfirmPanel/Panel/Margin/VBox/ButtonsRow/CancelButton
 @onready var guide_button: Button = $HUD/GuideButton
 @onready var guide_panel: PanelContainer = $HUD/GuidePanel
 @onready var settings_button: Button = $HUD/SettingsButton
@@ -43,8 +39,6 @@ const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.36, 0.32)
 @onready var music_value: Label = $HUD/SettingsPopup/VBox/MusicRow/MusicValue
 @onready var sfx_value: Label = $HUD/SettingsPopup/VBox/SFXRow/SFXValue
 @onready var ambience_value: Label = $HUD/SettingsPopup/VBox/AmbienceRow/AmbienceValue
-@onready var play_again_button: Button = $HUD/SettingsPopup/VBox/PlayAgainButton
-@onready var host_status_label: Label = $HUD/SettingsPopup/VBox/HostStatusLabel
 @onready var leave_game_button: Button = $HUD/SettingsPopup/VBox/LeaveGameButton
 @onready var close_settings_button: Button = $HUD/SettingsPopup/VBox/CloseButton
 @onready var connection_dot: Panel = $HUD/ConnectionIndicator/Dot
@@ -78,6 +72,17 @@ var _spectator: SpectatorView = null
 ## freed TextureRect - a runtime error mid-match rather than a wrong colour.
 var _panel_connections: Array = []
 
+## Belt-and-suspenders for _check_for_sili_win: that function is also called
+## directly off every Tubig's burned/died signal, which is the fast path and
+## should always be the one that actually ends the round. This is the backup -
+## a plain "is everyone incapacitated right now" poll that doesn't depend on
+## any particular signal having fired, so a missed connection (a body spawned
+## through some path that skipped _refresh_team_state, say) can't leave a
+## fully-tagged team stuck waiting out the clock. Half a second is fast enough
+## nobody would notice it's a poll and not an event.
+var _win_check_accum: float = 0.0
+const WIN_CHECK_INTERVAL: float = 0.5
+
 
 ## Only used if Map/SpawnPoints is missing or has no marker for a role - the
 ## real positions come from the SpawnPoint nodes you drag around in the editor.
@@ -102,7 +107,6 @@ func _ready() -> void:
 
 	_setup_settings_popup()
 	_setup_connection_indicator()
-	_setup_exit_confirm()
 	_setup_guide()
 	_setup_announcements()
 
@@ -214,71 +218,9 @@ func _setup_settings_popup() -> void:
 	_bind_volume_row(ambience_slider, ambience_value,
 		GameSettings.ambience_volume, GameSettings.set_ambience_volume)
 
-	settings_button.pressed.connect(_on_settings_button_pressed)
+	settings_button.pressed.connect(func(): settings_popup.visible = not settings_popup.visible)
 	close_settings_button.pressed.connect(func(): settings_popup.visible = false)
 	leave_game_button.pressed.connect(_on_leave_game_pressed)
-	play_again_button.pressed.connect(_on_play_again_pressed)
-
-	# Somebody quitting can turn a restartable round into an unstartable one
-	# while this panel is sitting open, so the state is recomputed on every
-	# roster change rather than only when the panel is opened.
-	NetworkManager.player_list_changed.connect(_refresh_play_again_state)
-	_refresh_play_again_state()
-
-
-func _on_settings_button_pressed() -> void:
-	settings_popup.visible = not settings_popup.visible
-	if settings_popup.visible:
-		_refresh_play_again_state()
-
-
-## Only the host can restart a round, so only the host gets a button. Everybody
-## else gets told what they are waiting on.
-##
-## Hidden rather than disabled for a client: a greyed-out button still reads as
-## "something I could do if I got it right", and there is nothing they can get
-## right - the decision is not theirs. The label carries the whole message, and
-## it is the same wording match_result.gd uses on its own results screen, so a
-## client waiting mid-match and a client waiting between rounds are told the
-## same thing.
-##
-## Offline counts as host: there is nobody to coordinate with.
-func _refresh_play_again_state() -> void:
-	if play_again_button == null or not is_instance_valid(play_again_button):
-		return
-
-	var offline := not multiplayer.has_multiplayer_peer()
-	var can_restart := offline or NetworkManager.is_host()
-
-	play_again_button.visible = can_restart
-	if not can_restart:
-		host_status_label.visible = true
-		host_status_label.text = "Waiting for host..."
-		return
-
-	# Below the practice minimum, NetworkManager.start_practice_match() returns
-	# silently. An enabled button that does nothing at all is worse than a
-	# disabled one that says why.
-	var enough := offline or NetworkManager.players.size() >= NetworkManager.MIN_PRACTICE_PLAYERS
-	play_again_button.disabled = not enough
-	host_status_label.visible = not enough
-	host_status_label.text = "" if enough else "Not enough players to restart."
-
-
-## Restarts the round for EVERYONE, not just the host who pressed it -
-## NetworkManager broadcasts the arena reload, so there is no scene change to
-## make here. Doing both would load the arena twice on this machine.
-func _on_play_again_pressed() -> void:
-	settings_popup.visible = false
-	# The reload takes a few frames to come back around; one press only, or a
-	# second one lands while the first is still in flight.
-	play_again_button.disabled = true
-
-	if not multiplayer.has_multiplayer_peer():
-		LoadingScreen.reload_scene()
-		return
-
-	NetworkManager.restart_round()
 
 
 ## The only way out of a match once it's started - the title screen's own Exit
@@ -287,17 +229,6 @@ func _on_play_again_pressed() -> void:
 func _on_leave_game_pressed() -> void:
 	NetworkManager.leave_game()
 	LoadingScreen.change_scene("res://ui/title_screen/title_screen.tscn")
-
-
-## A standalone Exit button on the HUD itself, separate from Settings > Leave
-## Game - that one required opening a menu first to find the way out, and
-## playtesters kept asking where it was. Confirmed rather than instant: this
-## button sits right where the fingers already are, and one misclick
-## shouldn't drop someone out of a match they meant to keep playing.
-func _setup_exit_confirm() -> void:
-	exit_button.pressed.connect(func(): exit_confirm_panel.visible = true)
-	exit_confirm_button.pressed.connect(_on_leave_game_pressed)
-	exit_cancel_button.pressed.connect(func(): exit_confirm_panel.visible = false)
 
 
 ## F1 (standard) or H (mnemonic for "Help") toggles the controls guide. The
@@ -319,8 +250,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_guide()
 			get_viewport().set_input_as_handled()
 			return
-	if event.is_action_pressed("ui_cancel") and exit_confirm_panel.visible:
-		exit_confirm_panel.visible = false
+	if event.is_action_pressed("ui_cancel") and guide_panel.visible:
+		_toggle_guide()
 		get_viewport().set_input_as_handled()
 
 
@@ -787,6 +718,21 @@ func _live_tubig_bodies() -> Array:
 	return live
 
 
+## Server-only poll, running independently of the burned/died signals - see
+## the comment on _win_check_accum for why this exists alongside the
+## event-driven path rather than instead of it.
+func _process(delta: float) -> void:
+	if not multiplayer.is_server():
+		return
+	if not MatchManager.is_running:
+		return
+	_win_check_accum += delta
+	if _win_check_accum < WIN_CHECK_INTERVAL:
+		return
+	_win_check_accum = 0.0
+	_check_for_sili_win()
+
+
 func _check_for_sili_win() -> void:
 	if not multiplayer.is_server():
 		return
@@ -796,6 +742,11 @@ func _check_for_sili_win() -> void:
 	if not MatchManager.is_running:
 		return
 
+	# Every Tubig still in the match has to be BURNING or DEAD - rooted, unable
+	# to move - for the Sili to have won. The Sili is never a candidate here;
+	# it's the opposing side, so it can never be the one rescue depends on.
+	# The moment even one Tubig is NORMAL (free to move), that one could still
+	# reach and save a tagged teammate, so the round keeps going.
 	var live := _live_tubig_bodies()
 	for tubig in live:
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")

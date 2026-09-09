@@ -54,7 +54,11 @@ func _build() -> void:
 	column.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	column.offset_left = -260.0
 	column.offset_right = 260.0
-	column.offset_top = 24.0
+	# Below arena.gd's MatchLabel/AnnouncementLabel, which the same center-top
+	# strip is also anchored to and which now runs down to y=108 (the clock
+	# was enlarged and gained an announcement line under it). 24 put this
+	# banner squarely on top of both.
+	column.offset_top = 116.0
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_layer.add_child(column)

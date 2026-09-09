@@ -147,14 +147,18 @@ func _refresh_player_list() -> void:
 
 func _on_start_pressed() -> void:
 	if NetworkManager.players.size() != NetworkManager.MATCH_SIZE:
-		status_label.text = "Need exactly %d players." % NetworkManager.MATCH_SIZE
+		ModalDialog.show_message("Not Enough Players",
+			"Need exactly %d players to start a Ranked Series." % NetworkManager.MATCH_SIZE,
+			ModalDialog.ERROR_COLOR)
 		return
 	NetworkManager.start_series()
 
 
 func _on_practice_pressed() -> void:
 	if NetworkManager.players.size() < NetworkManager.MIN_PRACTICE_PLAYERS:
-		status_label.text = "Need at least %d players." % NetworkManager.MIN_PRACTICE_PLAYERS
+		ModalDialog.show_message("Not Enough Players",
+			"Need at least %d players for a Classic match." % NetworkManager.MIN_PRACTICE_PLAYERS,
+			ModalDialog.ERROR_COLOR)
 		return
 	NetworkManager.start_practice_match()
 

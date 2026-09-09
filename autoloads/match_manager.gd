@@ -192,17 +192,22 @@ func _process(delta: float) -> void:
 			rescues_locked.emit()
 
 	if time_remaining <= 0.0:
+		print("[match-end-debug] host: buzzer reached, calling end_match(false)")
 		end_match(false)  # Tubig survives to the buzzer
 
 
 func end_match(sili_won: bool) -> void:
 	if not is_running or not _is_authority():
+		print("[match-end-debug] end_match(%s) rejected - is_running=%s is_authority=%s" % [
+			sili_won, is_running, _is_authority()])
 		return
 	is_running = false
 
 	is_over = true
 
 	if _is_networked():
+		print("[match-end-debug] host: broadcasting _rpc_match_ended(%s) to %d peer(s)" % [
+			sili_won, multiplayer.get_peers().size()])
 		_rpc_match_ended.rpc(sili_won)
 	else:
 		match_ended.emit(sili_won)
@@ -285,6 +290,8 @@ func _rpc_rescues_locked() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _rpc_match_ended(sili_won: bool) -> void:
+	print("[match-end-debug] peer %d: received _rpc_match_ended(%s)" % [
+		multiplayer.get_unique_id(), sili_won])
 	is_running = false
 	is_over = true
 	match_ended.emit(sili_won)

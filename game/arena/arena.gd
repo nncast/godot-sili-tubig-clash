@@ -618,8 +618,12 @@ func _check_for_sili_win() -> void:
 		if not is_instance_valid(tubig):
 			continue
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
+		print("[match-end-debug] _check_for_sili_win: %s state=%s incapacitated=%s" % [
+			tubig.name, (heat.state if heat else "no HeatStatus"),
+			(heat.is_incapacitated() if heat else "n/a")])
 		if heat and not heat.is_incapacitated():
 			return  # someone is still free to attempt a rescue
+	print("[match-end-debug] _check_for_sili_win: everyone incapacitated, calling end_match(true)")
 	MatchManager.end_match(true)
 
 

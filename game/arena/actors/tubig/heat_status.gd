@@ -245,7 +245,10 @@ func request_ignite() -> void:
 		push_warning("HeatStatus: ignite from peer %d out of tag range - rejected." % sender)
 		return
 
+	print("[match-end-debug] request_ignite accepted for %s, state before=%s" % [
+		get_parent().name, state])
 	ignite()
+	print("[match-end-debug] request_ignite: %s state after=%s" % [get_parent().name, state])
 
 
 @rpc("any_peer", "call_local", "reliable")

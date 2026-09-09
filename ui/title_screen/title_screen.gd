@@ -56,6 +56,12 @@ var _auto_join_in_progress: bool = false
 @onready var how_to_body: RichTextLabel = $HowToPanel/Panel/Margin/VBox/Body
 @onready var how_to_close_button: Button = $HowToPanel/Panel/Margin/VBox/CloseButton
 
+## The career board (see autoloads/leaderboard.gd). Its own script builds the
+## whole panel in code and exposes open()/close(), so there's nothing to wire
+## up here beyond the button that reaches it.
+@onready var leaderboard_button: Button = $LeaderboardButton
+@onready var leaderboard_panel: Control = $LeaderboardPanel
+
 
 func _ready() -> void:
 	AudioManager.play_title_music()
@@ -71,6 +77,7 @@ func _ready() -> void:
 	how_to_close_button.pressed.connect(_on_how_to_close_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
+	leaderboard_button.pressed.connect(_on_leaderboard_pressed)
 
 	join_confirm_button.pressed.connect(_on_join_confirm_pressed)
 	join_cancel_button.pressed.connect(_on_join_cancel_pressed)
@@ -303,6 +310,15 @@ func _on_exit_confirmed() -> void:
 	get_tree().quit()
 
 
+## The career board reads user://leaderboard.json through the Leaderboard
+## autoload, which already banks every completed series on its own (see
+## autoloads/leaderboard.gd's series_finished listener) - this button is
+## purely the missing way to look at it.
+func _on_leaderboard_pressed() -> void:
+	_close_all_panels()
+	leaderboard_panel.open()
+
+
 ## Escape closes any open overlay instead of falling through to anything else.
 ## The event is swallowed so it can't also reach other dialogs.
 func _unhandled_input(event: InputEvent) -> void:
@@ -317,6 +333,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif exit_panel.visible:
 		_on_exit_cancel_pressed()
+		get_viewport().set_input_as_handled()
+	elif leaderboard_panel.visible:
+		leaderboard_panel.close()
+		leaderboard_button.grab_focus()
 		get_viewport().set_input_as_handled()
 
 
@@ -335,3 +355,4 @@ func _close_all_panels() -> void:
 	_set_join_status("")
 	how_to_panel.visible = false
 	exit_panel.visible = false
+	leaderboard_panel.close()

@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://c86sx7jg5nox1" path="res://ui/hud/minimap.gd" id="5_jqwhr"]
 [ext_resource type="Script" uid="uid://l0nvnaj46rxs" path="res://ui/hud/pregame_reveal.gd" id="7_qk5vs"]
 [ext_resource type="Script" uid="uid://bwr4vw5c3gkki" path="res://ui/hud/match_result.gd" id="8_ytb83"]
+[ext_resource type="Script" uid="uid://cp1gk53ttm381" path="res://ui/leaderboard/leaderboard_panel.gd" id="9_lboard"]
 
 [sub_resource type="CompressedTexture2D" id="CompressedTexture2D_elpcd"]
 load_path = "res://.godot/imported/settings.png-088b7f166c146c7f20ff762069b60d67.ctex"
@@ -337,6 +338,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("8_ytb83")
+
+[node name="LeaderboardPanel" type="Control" parent="ResultLayer" unique_id=1243961412]
+script = ExtResource("9_lboard")
 
 [node name="SiliContainer" type="Node2D" parent="." unique_id=327789985]
 

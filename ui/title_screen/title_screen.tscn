@@ -7,6 +7,7 @@
 [ext_resource type="Texture2D" uid="uid://bi6j41yi8p7hi" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm3.png" id="5_ca08b"]
 [ext_resource type="Texture2D" uid="uid://ctqe00v7026s" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm5.png" id="6_lgnx5"]
 [ext_resource type="Texture2D" uid="uid://bdc1ex5p0hmfs" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm6.png" id="7_1djn3"]
+[ext_resource type="Script" uid="uid://cp1gk53ttm381" path="res://ui/leaderboard/leaderboard_panel.gd" id="3_lboard"]
 
 [node name="TitleScreen" type="Control" unique_id=1703636514]
 layout_mode = 3
@@ -122,30 +123,35 @@ max_length = 10
 
 [node name="HostButton" type="Button" parent="VBox" unique_id=913935459]
 layout_mode = 2
+theme_type_variation = &"FlatButton"
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Host Game"
 flat = true
 
 [node name="JoinButton" type="Button" parent="VBox" unique_id=100553706]
 layout_mode = 2
+theme_type_variation = &"FlatButton"
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Join Game"
 flat = true
 
 [node name="HowToButton" type="Button" parent="VBox" unique_id=418277301]
 layout_mode = 2
+theme_type_variation = &"FlatButton"
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "How to Play"
 flat = true
 
 [node name="SettingsButton" type="Button" parent="VBox" unique_id=316910047]
 layout_mode = 2
+theme_type_variation = &"FlatButton"
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Settings"
 flat = true
 
 [node name="ExitButton" type="Button" parent="VBox" unique_id=2003637775]
 layout_mode = 2
+theme_type_variation = &"FlatButton"
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Exit"
 flat = true
@@ -153,6 +159,22 @@ flat = true
 [node name="StatusLabel" type="Label" parent="VBox" unique_id=480226216]
 layout_mode = 2
 autowrap_mode = 2
+
+[node name="LeaderboardButton" type="Button" parent="." unique_id=1900500001]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 156.0
+offset_bottom = 50.0
+theme_type_variation = &"FlatButton"
+theme_override_fonts/font = ExtResource("2_ffat2")
+theme_override_font_sizes/font_size = 18
+text = "Leaderboard"
+flat = true
+
+[node name="LeaderboardPanel" type="Control" parent="." unique_id=1900500002]
+script = ExtResource("3_lboard")
 
 [node name="JoinPanel" type="Control" parent="." unique_id=1759550424]
 visible = false

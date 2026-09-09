@@ -8,7 +8,7 @@ extends SceneTree
 ## _initialize have not had _ready() called yet, so the arena has not loaded
 ## its map and the canopy layers have not built their materials.
 
-const GROUND := ["sea", "sand", "grass", "road", "stairs", "sandfade"]
+const GROUND := ["sea", "sand", "grass", "road", "stairs", "sandfade", "plank"]
 
 var _f := 0
 var _frame := 0

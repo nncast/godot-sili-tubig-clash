@@ -76,13 +76,13 @@ func _run() -> void:
 			true)
 
 	# --- Leaderboard entry point ---
-	var trophy := _title.get_node_or_null("LeaderboardButton") as Button
+	var leaderboard_button := _title.get_node_or_null("LeaderboardButton") as Button
 	_c("the button comes from the scene, not from code",
-		trophy != null and trophy.icon != null, true)
+		leaderboard_button != null and leaderboard_button.text == "Leaderboard", true)
 	# Declared after VBox but before the modals, so it stops drawing over their
 	# dim - and stops being clickable through it.
 	_c("the button sits under the modal panels",
-		trophy.get_index() < _title.get_node("JoinPanel").get_index(), true)
+		leaderboard_button.get_index() < _title.get_node("JoinPanel").get_index(), true)
 
 	var panel := _title.get_node_or_null("LeaderboardPanel")
 	_c("the panel is built", panel != null, true)
@@ -90,7 +90,7 @@ func _run() -> void:
 		return
 	_c("the panel starts hidden", panel.visible, false)
 
-	trophy.pressed.emit()
+	leaderboard_button.pressed.emit()
 	_c("the scene button opens it", panel.visible, true)
 
 	# Containers lay out on the frame AFTER their children change, so measuring

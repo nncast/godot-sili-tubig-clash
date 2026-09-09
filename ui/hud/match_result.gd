@@ -42,6 +42,15 @@ var _leaving: bool = false
 var _standings_panel: PanelContainer
 var _standings_rows: VBoxContainer
 var _standings_title: Label
+var _leaderboard_button: Button
+
+## The career board (autoloads/leaderboard.gd), which banks a series the
+## instant it completes - so the moment that just happened is exactly when a
+## player would want to see how it landed. A sibling under ResultLayer
+## (see arena.tscn) rather than built here: leaderboard_panel.gd already
+## builds its own full UI in code and is shared verbatim with the title
+## screen, so there is nothing scene-specific to add.
+@onready var leaderboard_panel: Control = $"../LeaderboardPanel"
 
 
 func _ready() -> void:
@@ -134,6 +143,18 @@ func _build_ui() -> void:
 	_title_button.pressed.connect(_on_title_pressed)
 	_button_row.add_child(_title_button)
 
+	# Practice matches never open a series, so there is nothing to show and
+	# nothing gets banked - see leaderboard.gd's own "only completed series
+	# count" rule. Visibility is set from that same flag in _on_match_ended,
+	# not once here, since a series can still be mid-set the first time this
+	# overlay opens.
+	_leaderboard_button = Button.new()
+	_leaderboard_button.name = "LeaderboardButton"
+	_leaderboard_button.text = "Leaderboard"
+	_leaderboard_button.custom_minimum_size = Vector2(210, 56)
+	_leaderboard_button.pressed.connect(func(): leaderboard_panel.open())
+	_button_row.add_child(_leaderboard_button)
+
 	_hint_label = Label.new()
 	_hint_label.name = "Hint"
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -155,6 +176,7 @@ func _on_match_ended(sili_won: bool) -> void:
 	# reassigning roles for a lobby it doesn't own. Clients get told to wait
 	# instead of being handed a button that quietly does nothing.
 	_refresh_advance_controls()
+	_leaderboard_button.visible = SeriesManager.is_active
 
 	visible = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -359,6 +381,15 @@ func _on_title_pressed() -> void:
 	_title_button.disabled = true
 	NetworkManager.leave_game()
 	LoadingScreen.change_scene("res://ui/title_screen/title_screen.tscn")
+
+
+## Escape backs out of the career board rather than falling through to
+## anything else underneath it (Play Again, Back to Title) - the same rule
+## the title screen's overlays follow.
+func _unhandled_input(event: InputEvent) -> void:
+	if visible and leaderboard_panel.visible and event.is_action_pressed("ui_cancel"):
+		leaderboard_panel.close()
+		get_viewport().set_input_as_handled()
 
 
 # --- Series standings ---

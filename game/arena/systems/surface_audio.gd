@@ -19,9 +19,15 @@ class_name SurfaceAudio
 
 ## Layer node path under the level's Map node -> surface name. Order is
 ## priority, most specific ground first. Add a row here when you add a layer.
+##
+## "plank" sits above grass/sand on purpose - a boardwalk is a built surface
+## painted over whatever ground it crosses, the same reason road and stairs
+## already outrank sand: whichever layer is physically on top has to be
+## checked first, or a plank walkway over sand would silently sound like sand.
 const SURFACE_LAYERS: Array = [
 	["road", "road"],
 	["stairs", "stairs"],
+	["plank", "plank"],
 	["grass", "grass"],
 	["sand", "sand"],
 	["sandfade", "sand"],

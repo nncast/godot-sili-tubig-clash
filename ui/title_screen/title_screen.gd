@@ -4,6 +4,10 @@ extends Control
 ## and not in ui_theme.tres.
 const ERROR_COLOR := Color(1.0, 0.45, 0.40)
 const INFO_COLOR := Color(0.80, 0.82, 0.86)
+## CodeEdit has no border in the base theme (see ui_theme.tres's
+## StyleBoxFlat_surface) - this is added on top of it, not swapped in, so the
+## field keeps its normal look otherwise.
+const BORDER_ACTIVE_COLOR := Color(0.45, 0.85, 0.95)
 
 @onready var name_edit: LineEdit = $VBox/NameRow/NameEdit
 @onready var host_button: Button = $VBox/HostButton
@@ -134,14 +138,41 @@ func _on_join_cancel_pressed() -> void:
 ## errors - a failure is disruptive enough to warrant ModalDialog instead (see
 ## _on_connection_failed and _on_code_lookup_failed), which also means it's
 ## never silently lost the way a label behind a closed panel would be.
+##
+## JoinStatus and the CodeEdit border are updated unconditionally, not inside
+## the branch below - both callers that clear this (_on_join_pressed,
+## _on_join_cancel_pressed) call it while join_panel.visible is momentarily
+## the OPPOSITE of what it's about to become, so gating this on that flag
+## left the label stuck visible and the border stuck highlighted from the
+## previous attempt. Writing to a hidden label is harmless; not writing to a
+## visible one is the actual bug.
 func _set_join_status(message: String) -> void:
+	join_status.text = message
+	join_status.visible = not message.is_empty()
+	join_status.add_theme_color_override("font_color", INFO_COLOR)
+	_set_code_edit_active(not message.is_empty())
+
 	if join_panel.visible:
-		join_status.text = message
-		join_status.add_theme_color_override("font_color", INFO_COLOR)
 		status_label.text = ""
 	else:
 		status_label.text = message
 		status_label.add_theme_color_override("font_color", INFO_COLOR)
+
+
+## The label text carries the message; the border is just a second, glance-
+## able cue that something about this field is in flight - lit while a lookup
+## or connection attempt is running, plain the rest of the time.
+func _set_code_edit_active(active: bool) -> void:
+	if not active:
+		code_edit.remove_theme_stylebox_override("normal")
+		return
+	var base := code_edit.get_theme_stylebox("normal")
+	if not (base is StyleBoxFlat):
+		return
+	var highlighted: StyleBoxFlat = (base as StyleBoxFlat).duplicate()
+	highlighted.border_color = BORDER_ACTIVE_COLOR
+	highlighted.set_border_width_all(2)
+	code_edit.add_theme_stylebox_override("normal", highlighted)
 
 
 ## Accepts either a 4-digit lobby code (LAN broadcast lookup) or the host's IP
@@ -301,6 +332,6 @@ func _resolved_name() -> String:
 ## Helper to close all panels at once
 func _close_all_panels() -> void:
 	join_panel.visible = false
-	join_status.text = ""
+	_set_join_status("")
 	how_to_panel.visible = false
 	exit_panel.visible = false

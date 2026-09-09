@@ -574,15 +574,24 @@ func _load_map() -> void:
 
 ## Connects and records, so _drop_panel_connections can undo it on the next
 ## rebuild. Panel closures capture nodes, so they must not outlive those nodes.
+##
+## Stored as a WeakRef, not the HeatStatus node itself. A departed player's
+## body (HeatStatus included) can now be freed out from under this array by
+## _on_player_left, and reading a plain Object reference back out of a
+## Dictionary after its target was freed logs "Trying to assign invalid
+## previously freed instance" the moment it's assigned to a typed variable -
+## before is_instance_valid() ever gets a chance to say no. WeakRef.get_ref()
+## is the engine's own answer to exactly this: it comes back null, quietly,
+## once the target is gone.
 func _track_connection(source: Object, signal_name: StringName, callable: Callable) -> void:
 	source.connect(signal_name, callable)
-	_panel_connections.append({"source": source, "signal": signal_name, "callable": callable})
+	_panel_connections.append({"source": weakref(source), "signal": signal_name, "callable": callable})
 
 
 func _drop_panel_connections() -> void:
 	for entry in _panel_connections:
-		var source: Object = entry["source"]
-		if is_instance_valid(source) and source.is_connected(entry["signal"], entry["callable"]):
+		var source: Object = entry["source"].get_ref()
+		if source != null and source.is_connected(entry["signal"], entry["callable"]):
 			source.disconnect(entry["signal"], entry["callable"])
 	_panel_connections.clear()
 

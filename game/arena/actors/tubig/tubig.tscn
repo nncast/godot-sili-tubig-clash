@@ -1,10 +1,9 @@
 [gd_scene format=3 uid="uid://cmyvrk3yt5706"]
 
-[ext_resource type="Script" path="res://game/arena/actors/tubig/tubig.gd" id="1_g2els"]
 [ext_resource type="Texture2D" uid="uid://cgc6pnpymu42o" path="res://game/assets/art/characters/16x16 Tubig.png" id="2_qd4cw"]
 [ext_resource type="Texture2D" uid="uid://b77txg5qm6nhj" path="res://game/assets/art/ui/heart.png" id="4_154gd"]
 [ext_resource type="Texture2D" uid="uid://dtvw0tpx85yol" path="res://game/assets/art/ui/stamina.png" id="5_8tch1"]
-[ext_resource type="Script" path="res://game/arena/actors/tubig/heat_status.gd" id="5_heat0"]
+[ext_resource type="Script" uid="uid://hqanojojeqtj" path="res://game/arena/actors/tubig/heat_status.gd" id="5_heat0"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_qd4cw"]
 atlas = ExtResource("2_qd4cw")
@@ -719,7 +718,6 @@ corner_detail = 20
 
 [node name="player" type="CharacterBody2D" unique_id=248945563]
 z_index = 20
-script = ExtResource("1_g2els")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=2022279106]
 z_index = 20
@@ -735,6 +733,7 @@ zoom = Vector2(2, 2)
 position_smoothing_enabled = true
 
 [node name="RescueIndicator" type="ProgressBar" parent="." unique_id=694303160]
+visible = false
 z_index = 22
 offset_left = -24.0
 offset_top = -46.0

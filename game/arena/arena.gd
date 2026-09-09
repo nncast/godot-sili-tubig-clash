@@ -64,6 +64,7 @@ var map_instance: Node2D = null
 
 var _tubig_players: Array = []
 var _spectator: SpectatorView = null
+var _danger_music: DangerMusic = null
 
 ## Every signal this panel wired up on the LAST rebuild, so the next rebuild can
 ## unwire them. Without this the closures below outlive the rows they capture:
@@ -435,9 +436,9 @@ func _refresh_team_state() -> void:
 	_configure_local_hud()
 
 
-## The mini-map and the threat vignette both need to know which character on
-## this screen is ours, and which side it's on - the map shows a different set
-## of dots per team, and the vignette is Tubig-only.
+## The mini-map, the threat vignette and the danger music all need to know
+## which character on this screen is ours, and which side it's on - the map
+## shows a different set of dots per team, and the other two are Tubig-only.
 func _configure_local_hud() -> void:
 	var my_id := _local_peer_id()
 	var is_sili: bool = NetworkManager.roles.get(my_id, "tubig") == "sili"
@@ -446,6 +447,7 @@ func _configure_local_hud() -> void:
 
 	minimap.configure(local_player, is_sili)
 	threat_vignette.track_player(local_player, not is_sili)
+	_ensure_danger_music().track_player(local_player, not is_sili)
 
 	# Only a Tubig can be eliminated, so the Sili never needs one of these.
 	if not is_sili and local_player != null:
@@ -462,6 +464,19 @@ func _ensure_spectator() -> SpectatorView:
 	_spectator.name = "SpectatorView"
 	add_child(_spectator)
 	return _spectator
+
+
+## Same "create once, reuse after" reasoning as _ensure_spectator() - and the
+## same doc comment on danger_music.gd itself explains why this is built here
+## in code rather than placed in arena.tscn: it is per-local-player state, and
+## the arena is what knows which character that is.
+func _ensure_danger_music() -> DangerMusic:
+	if _danger_music != null and is_instance_valid(_danger_music):
+		return _danger_music
+	_danger_music = DangerMusic.new()
+	_danger_music.name = "DangerMusic"
+	add_child(_danger_music)
+	return _danger_music
 
 
 func _local_peer_id() -> int:

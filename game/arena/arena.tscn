@@ -1,16 +1,19 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://bvb8sstpgl80d"]
 
 [ext_resource type="Script" uid="uid://uq3omdhc1jx3" path="res://game/arena/arena.gd" id="1_kdgho"]
 [ext_resource type="Script" uid="uid://bvyqnwddex64m" path="res://ui/hud/threat_vignette.gd" id="3_ksk8y"]
 [ext_resource type="Script" uid="uid://b4m220i2h3itl" path="res://ui/hud/event_feed.gd" id="4_jhjpt"]
 [ext_resource type="Script" uid="uid://c86sx7jg5nox1" path="res://ui/hud/minimap.gd" id="5_jqwhr"]
-[ext_resource type="Texture2D" uid="uid://dgvb1wyiyleho" path="res://game/assets/art/ui/Hud_Menu/settings.png" id="6_ksk5a"]
 [ext_resource type="Script" uid="uid://l0nvnaj46rxs" path="res://ui/hud/pregame_reveal.gd" id="7_qk5vs"]
 [ext_resource type="Script" uid="uid://bwr4vw5c3gkki" path="res://ui/hud/match_result.gd" id="8_ytb83"]
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_elpcd"]
+load_path = "res://.godot/imported/settings.png-088b7f166c146c7f20ff762069b60d67.ctex"
+
 [node name="MultiplayerArena" type="Node2D" unique_id=1328311220]
 script = ExtResource("1_kdgho")
 
-[node name="MapHolder" type="Node2D" parent="."]
+[node name="MapHolder" type="Node2D" parent="." unique_id=1074302611]
 
 [node name="SiliSpawner" type="MultiplayerSpawner" parent="." unique_id=162836291]
 spawn_path = NodePath("../SiliContainer")
@@ -73,16 +76,15 @@ theme_override_constants/separation = 6
 metadata/_edit_use_anchors_ = true
 
 [node name="ConnectionIndicator" type="HBoxContainer" parent="HUD" unique_id=1900000001]
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 16.0
-offset_top = -40.0
-offset_right = 140.0
-offset_bottom = -16.0
-grow_vertical = 0
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -365.0
+offset_top = 14.0
+offset_right = -241.0
+offset_bottom = 38.0
+grow_horizontal = 0
 theme_override_constants/separation = 6
-metadata/_edit_use_anchors_ = true
 
 [node name="Dot" type="Panel" parent="HUD/ConnectionIndicator" unique_id=1900000002]
 custom_minimum_size = Vector2(12, 12)
@@ -109,18 +111,19 @@ horizontal_alignment = 1
 metadata/_edit_use_anchors_ = true
 
 [node name="SettingsButton" type="Button" parent="HUD" unique_id=1383247187]
-tooltip_text = "Audio settings"
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
+anchors_preset = -1
+anchor_left = 0.9921875
+anchor_top = -0.024691358
+anchor_right = 1.0130209
+anchor_bottom = 0.012345679
 offset_left = -247.0
-offset_top = 16.0
+offset_top = 8.0
 offset_right = -207.0
-offset_bottom = 56.0
+offset_bottom = 48.0
 grow_horizontal = 0
-icon = ExtResource("6_ksk5a")
+tooltip_text = "Audio settings"
+icon = SubResource("CompressedTexture2D_elpcd")
 flat = true
-alignment = 2
 icon_alignment = 1
 expand_icon = true
 metadata/_edit_use_anchors_ = true

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bi6j41yi8p7hi"
-path="res://.godot/imported/vegetation_tree_palm3.png-7a76e3f041d3c48ea26cbd1b7ebe8f92.ctex"
+uid="uid://bdc1ex5p0hmfs"
+path="res://.godot/imported/vegetation_tree_palm6.png-561ea3961f5bf80b93ab42b3da14633c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://game/assets/art/ui/background/vegetation_tree_palm3.png"
-dest_files=["res://.godot/imported/vegetation_tree_palm3.png-7a76e3f041d3c48ea26cbd1b7ebe8f92.ctex"]
+source_file="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm6.png"
+dest_files=["res://.godot/imported/vegetation_tree_palm6.png-561ea3961f5bf80b93ab42b3da14633c.ctex"]
 
 [params]
 

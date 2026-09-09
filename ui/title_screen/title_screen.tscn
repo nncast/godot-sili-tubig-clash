@@ -3,10 +3,10 @@
 [ext_resource type="Script" uid="uid://hyep0gpoy4np" path="res://ui/title_screen/title_screen.gd" id="1_title"]
 [ext_resource type="Texture2D" uid="uid://dmmrbwfg7avcv" path="res://game/assets/art/ui/title.png" id="2_72buf"]
 [ext_resource type="FontFile" uid="uid://dt8i0axtwshee" path="res://game/assets/fonts/BoldPixels.ttf" id="2_ffat2"]
-[ext_resource type="Texture2D" uid="uid://cv6k40ouuig57" path="res://game/assets/art/ui/background/background.png" id="4_rhiq2"]
-[ext_resource type="Texture2D" uid="uid://bi6j41yi8p7hi" path="res://game/assets/art/ui/background/vegetation_tree_palm3.png" id="5_ca08b"]
-[ext_resource type="Texture2D" uid="uid://ctqe00v7026s" path="res://game/assets/art/ui/background/vegetation_tree_palm5.png" id="6_lgnx5"]
-[ext_resource type="Texture2D" uid="uid://bdc1ex5p0hmfs" path="res://game/assets/art/ui/background/vegetation_tree_palm6.png" id="7_1djn3"]
+[ext_resource type="Texture2D" uid="uid://cv6k40ouuig57" path="res://game/assets/art/ui/Hud_Menu/background/background.png" id="4_rhiq2"]
+[ext_resource type="Texture2D" uid="uid://bi6j41yi8p7hi" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm3.png" id="5_ca08b"]
+[ext_resource type="Texture2D" uid="uid://ctqe00v7026s" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm5.png" id="6_lgnx5"]
+[ext_resource type="Texture2D" uid="uid://bdc1ex5p0hmfs" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm6.png" id="7_1djn3"]
 
 [node name="TitleScreen" type="Control" unique_id=1703636514]
 layout_mode = 3

@@ -29,6 +29,16 @@ const WAITING_COLOR := Color(0.62, 0.58, 0.55)
 @onready var leave_button: Button = $Panel/Margin/VBox/ButtonRow/LeaveButton
 @onready var status_label: Label = $Panel/Margin/VBox/StatusLabel
 
+## A one-off network notice (e.g. discovery being unavailable on this
+## Wi-Fi/hotspot) used to be written straight into status_label - but that
+## label sits inside the same fixed-height VBox as StartButton/ButtonRow, so a
+## message long enough to wrap pushed those buttons around or off the bottom
+## of the panel. Routing it through this modal instead means it can never
+## resize anything the buttons live in.
+@onready var notice_panel: Control = $NoticePanel
+@onready var notice_message: Label = $NoticePanel/Panel/Margin/VBox/Message
+@onready var notice_ok_button: Button = $NoticePanel/Panel/Margin/VBox/OkButton
+
 
 func _ready() -> void:
 	NetworkManager.player_list_changed.connect(_refresh_player_list)
@@ -39,8 +49,10 @@ func _ready() -> void:
 	start_button.pressed.connect(_on_start_pressed)
 	practice_button.pressed.connect(_on_practice_pressed)
 	leave_button.pressed.connect(_on_leave_pressed)
+	notice_ok_button.pressed.connect(_on_notice_ok_pressed)
 
 	status_label.text = ""
+	notice_panel.visible = false
 
 	if NetworkManager.is_host():
 		_update_host_label()
@@ -60,7 +72,16 @@ func _on_lobby_code_ready(_code: String) -> void:
 
 func _on_discovery_unavailable() -> void:
 	_update_host_label()
-	status_label.text = "Lobby codes unavailable - join by IP."
+	_show_notice("Lobby codes unavailable - join by IP.")
+
+
+func _show_notice(message: String) -> void:
+	notice_message.text = message
+	notice_panel.visible = true
+
+
+func _on_notice_ok_pressed() -> void:
+	notice_panel.visible = false
 
 
 ## The IP is always shown: on phone hotspots and guest Wi-Fi the broadcast that

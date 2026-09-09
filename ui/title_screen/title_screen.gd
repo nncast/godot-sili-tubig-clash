@@ -35,6 +35,13 @@ const INFO_COLOR := Color(0.80, 0.82, 0.86)
 @onready var join_confirm_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinConfirmButton
 @onready var join_cancel_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinCancelButton
 
+## Set the moment the player backs out of a join attempt (Cancel or Escape) and
+## cleared the moment a new one starts. Guards the async replies below - a code
+## lookup can take up to five seconds, and without this flag a cancel followed
+## by a stale code_lookup_failed/connection_failed would still pop an error, or
+## a stale success would still drop the player into a lobby they already quit.
+var _join_cancelled: bool = false
+
 @onready var how_to_panel: Control = $HowToPanel
 @onready var how_to_body: RichTextLabel = $HowToPanel/Panel/Margin/VBox/Body
 @onready var how_to_close_button: Button = $HowToPanel/Panel/Margin/VBox/CloseButton
@@ -87,9 +94,19 @@ func _on_join_pressed() -> void:
 	code_edit.text = ""
 	code_edit.grab_focus()
 	join_confirm_button.disabled = false
+	_join_cancelled = false
 
 
 func _on_join_cancel_pressed() -> void:
+	# A code lookup or an IP connect may already be in flight - leave_game()
+	# tears down whatever peer NetworkManager opened for it (or does nothing
+	# if there wasn't one) so cancelling here can never leave a half-open
+	# connection quietly trying to finish in the background. _join_cancelled
+	# then tells any reply that arrives afterwards (a late code_lookup_failed,
+	# connection_failed, or even a successful connect racing the click) to be
+	# ignored instead of resurrecting a dialog the player already left.
+	_join_cancelled = true
+	NetworkManager.leave_game()
 	join_panel.visible = false
 	_set_join_status("", INFO_COLOR)
 	join_button.grab_focus()
@@ -138,11 +155,19 @@ func _on_join_confirm_pressed() -> void:
 
 ## Fires once we're actually registered with the host - safe to move on.
 func _on_player_list_changed() -> void:
-	if not NetworkManager.is_host() and NetworkManager.players.size() > 0:
-		get_tree().change_scene_to_file("res://ui/lobby/lobby.tscn")
+	if NetworkManager.is_host() or NetworkManager.players.is_empty():
+		return
+	if _join_cancelled:
+		# The player backed out while this connection was still landing -
+		# don't drop them into a lobby they already chose to leave.
+		NetworkManager.leave_game()
+		return
+	get_tree().change_scene_to_file("res://ui/lobby/lobby.tscn")
 
 
 func _on_connection_failed() -> void:
+	if _join_cancelled:
+		return
 	_set_join_status(
 		"Couldn't reach the host.\nCheck you're on the same Wi-Fi, and that the host's firewall allows the game.",
 		ERROR_COLOR)
@@ -150,6 +175,8 @@ func _on_connection_failed() -> void:
 
 
 func _on_code_lookup_failed() -> void:
+	if _join_cancelled:
+		return
 	_set_join_status(
 		"No lobby found with that code.\nOn a phone hotspot, type the host's IP instead - it's on their lobby screen.",
 		ERROR_COLOR)

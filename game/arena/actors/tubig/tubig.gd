@@ -92,6 +92,7 @@ var _hidden_label: Label = null
 @onready var hearts: Array = [$ui/HeartsRow/Heart1, $ui/HeartsRow/Heart2, $ui/HeartsRow/Heart3]
 @onready var heat_status: HeatStatus = $HeatStatus
 @onready var interaction_area: Area2D = $InteractionArea
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 ## Set by whichever Tunnel mouth we're standing in - see tunnel.gd. Null means
 ## there's nothing to travel through.
@@ -665,6 +666,14 @@ func _update_hearts(lives_remaining: int) -> void:
 ## Runs on EVERY peer, because HeatStatus.state is replicated - which is what
 ## makes these audible to bystanders and not just to the person it happened to.
 func _on_heat_state_changed(new_state: HeatStatus.State) -> void:
+	# A burning or dead body is rooted and can no longer move out of the way,
+	# so leaving its collision on meant anyone who walked into it could shove
+	# the corpse around the map. Turning the shape off on every peer (the
+	# state is replicated, so this runs everywhere the body exists) makes an
+	# incapacitated Tubig passable instead, without touching how they collide
+	# while still playing normally.
+	collision_shape.disabled = new_state != HeatStatus.State.NORMAL
+
 	if new_state == HeatStatus.State.BURNING:
 		animated_sprite.play("heat_" + last_direction)
 	elif new_state == HeatStatus.State.DEAD:

@@ -13,6 +13,9 @@ const TUBIG_DEAD_COLOR := Color(0.42, 0.42, 0.44)
 const DEAD_ROW_TINT := Color(0.55, 0.55, 0.55, 0.65)
 ## Matches Tubig.HEART_SPENT_COLOR so the two heart displays stay in step.
 const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
+## Connection indicator dot colours.
+const CONNECTION_OK_COLOR := Color(0.35, 0.85, 0.45)
+const CONNECTION_LOST_COLOR := Color(0.88, 0.22, 0.20)
 ## Burn countdown. Amber while there is still time to cross the map, red once
 ## the decision is basically made - the threshold is a readable signal, not
 ## decoration, so it sits at the point where a rescue channel (6s) plus travel
@@ -33,7 +36,11 @@ const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.36, 0.32)
 @onready var music_value: Label = $HUD/SettingsPopup/VBox/MusicRow/MusicValue
 @onready var sfx_value: Label = $HUD/SettingsPopup/VBox/SFXRow/SFXValue
 @onready var ambience_value: Label = $HUD/SettingsPopup/VBox/AmbienceRow/AmbienceValue
+@onready var leave_game_button: Button = $HUD/SettingsPopup/VBox/LeaveGameButton
 @onready var close_settings_button: Button = $HUD/SettingsPopup/VBox/CloseButton
+@onready var connection_dot: Panel = $HUD/ConnectionIndicator/Dot
+@onready var connection_status_label: Label = $HUD/ConnectionIndicator/StatusLabel
+@onready var connection_indicator: HBoxContainer = $HUD/ConnectionIndicator
 @onready var sili_spawner: MultiplayerSpawner = $SiliSpawner
 @onready var tubig_spawner: MultiplayerSpawner = $TubigSpawner
 @onready var map_holder: Node2D = $MapHolder
@@ -84,6 +91,7 @@ func _ready() -> void:
 	MatchManager.match_ended.connect(_on_match_ended)
 
 	_setup_settings_popup()
+	_setup_connection_indicator()
 
 	# Bake the mini-map straight off the level's own tilemap, bottom-up, so it
 	# can never drift out of sync with the map the players are running around
@@ -195,6 +203,37 @@ func _setup_settings_popup() -> void:
 
 	settings_button.pressed.connect(func(): settings_popup.visible = not settings_popup.visible)
 	close_settings_button.pressed.connect(func(): settings_popup.visible = false)
+	leave_game_button.pressed.connect(_on_leave_game_pressed)
+
+
+## The only way out of a match once it's started - the title screen's own Exit
+## button doesn't reach here, and a host or client stuck mid-round (say, the
+## other side of a dead connection) had no way back except force-quitting.
+func _on_leave_game_pressed() -> void:
+	NetworkManager.leave_game()
+	LoadingScreen.change_scene("res://ui/title_screen/title_screen.tscn")
+
+
+## Hidden entirely offline (tools/ test harnesses have no peer to report on).
+## While networked, starts green and flips red the moment the host connection
+## is lost - see NetworkManager.server_disconnected. This does not itself
+## return the player to the title screen; Settings > Leave Game (above) is the
+## way out of a dead connection.
+func _setup_connection_indicator() -> void:
+	if not multiplayer.has_multiplayer_peer():
+		connection_indicator.visible = false
+		return
+	connection_indicator.visible = true
+	_set_connection_state(true)
+	NetworkManager.server_disconnected.connect(func(): _set_connection_state(false))
+
+
+func _set_connection_state(connected: bool) -> void:
+	var dot_style := StyleBoxFlat.new()
+	dot_style.bg_color = CONNECTION_OK_COLOR if connected else CONNECTION_LOST_COLOR
+	dot_style.set_corner_radius_all(6)
+	connection_dot.add_theme_stylebox_override("panel", dot_style)
+	connection_status_label.text = "Connected" if connected else "Disconnected"
 
 
 ## Mirrors settings.gd's _bind. Four rows configured by one code path is what

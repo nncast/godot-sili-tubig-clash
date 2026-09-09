@@ -674,6 +674,9 @@ properties/1/replication_mode = 1
 properties/2/path = NodePath(".:burn_seconds_left")
 properties/2/spawn = true
 properties/2/replication_mode = 2
+properties/3/path = NodePath(".:is_immune")
+properties/3/spawn = true
+properties/3/replication_mode = 1
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ia001"]
 radius = 13.0
@@ -706,6 +709,8 @@ corner_detail = 20
 
 [node name="player" type="CharacterBody2D" unique_id=248945563]
 z_index = 20
+collision_layer = 2
+collision_mask = 1
 script = ExtResource("1_g2els")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=2022279106]
@@ -754,6 +759,7 @@ replication_config = SubResource("SceneReplicationConfig_tubig_heat")
 
 [node name="InteractionArea" type="Area2D" parent="." unique_id=437840075]
 collision_layer = 0
+collision_mask = 2
 
 [node name="InteractionShape" type="CollisionShape2D" parent="InteractionArea" unique_id=258849601]
 position = Vector2(0, 3)

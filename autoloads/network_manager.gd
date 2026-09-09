@@ -47,6 +47,9 @@ signal lobby_code_ready(code: String)
 signal code_lookup_failed
 signal discovery_unavailable  # host couldn't open the discovery port
 signal arena_peer_ready(peer_id: int)  # a peer finished building the arena scene
+## Someone dropped out. Carries the name because by the time listeners run, the
+## peer is already out of `players` and there is nothing left to look it up by.
+signal player_left(peer_id: int, display_name: String)
 
 var players: Dictionary = {}  # peer_id (int) -> display name (String)
 var roles: Dictionary = {}    # peer_id (int) -> "sili" or "tubig"
@@ -95,14 +98,51 @@ func host_game(player_name: String) -> Error:
 
 ## Broadcasts a "who has this code" request on the LAN and connects to
 ## whoever replies. Emits code_lookup_failed if nobody answers in time.
-##
-## The request is re-sent on a short interval because a single UDP broadcast is
-## routinely dropped on Wi-Fi, and it goes to each interface's subnet broadcast
-## address as well as 255.255.255.255 - Android hotspots and some routers
-## silently discard the limited broadcast address.
 func join_by_code(code: String, player_name: String) -> void:
 	my_name = player_name
+	var expected_reply := "SSMTTM_HOST:%s" % code
+	var found_ip: String = await _discover_host(
+		("SSMTTM_DISCOVER:%s" % code).to_utf8_buffer(),
+		func(reply: String) -> bool: return reply == expected_reply)
 
+	if found_ip == "":
+		code_lookup_failed.emit()
+		return
+
+	var err := _connect_to_ip(found_ip, player_name)
+	if err != OK:
+		code_lookup_failed.emit()
+
+
+## The "Auto Join" button: same broadcast/retry/timeout shape as join_by_code,
+## but asks for ANY hostable game on the LAN instead of one specific code, for
+## a player who doesn't have a code to type (or can't be bothered to ask).
+## Whichever host answers first is the one it connects to - on a home network
+## that's normally the only one there is.
+func join_auto(player_name: String) -> void:
+	my_name = player_name
+	var found_ip: String = await _discover_host(
+		"SSMTTM_DISCOVER_ANY".to_utf8_buffer(),
+		func(reply: String) -> bool: return reply.begins_with("SSMTTM_HOST:"))
+
+	if found_ip == "":
+		code_lookup_failed.emit()
+		return
+
+	var err := _connect_to_ip(found_ip, player_name)
+	if err != OK:
+		code_lookup_failed.emit()
+
+
+## Shared retry loop behind join_by_code and join_auto. Returns the responding
+## host's IP, or "" if nobody whose reply satisfies `reply_matches` answered
+## within DISCOVERY_TIMEOUT (including if the socket couldn't even be bound).
+##
+## Re-sent on a short interval because a single UDP broadcast is routinely
+## dropped on Wi-Fi, and it goes to each interface's subnet broadcast address
+## as well as 255.255.255.255 - Android hotspots and some routers silently
+## discard the limited broadcast address.
+func _discover_host(request: PackedByteArray, reply_matches: Callable) -> String:
 	var udp := PacketPeerUDP.new()
 	# Binding explicitly (ephemeral port, all interfaces) guarantees the socket
 	# is open and listening before any reply can arrive. Relying on the implicit
@@ -110,14 +150,10 @@ func join_by_code(code: String, player_name: String) -> void:
 	var bind_err := udp.bind(0, "*")
 	if bind_err != OK:
 		push_warning("NetworkManager: could not bind discovery socket (%s)" % bind_err)
-		code_lookup_failed.emit()
-		return
+		return ""
 	udp.set_broadcast_enabled(true)
 
 	var targets := _broadcast_targets()
-	var request := ("SSMTTM_DISCOVER:%s" % code).to_utf8_buffer()
-	var expected_reply := "SSMTTM_HOST:%s" % code
-
 	var elapsed := 0.0
 	var since_send := DISCOVERY_RESEND_INTERVAL  # send immediately on first pass
 	var found_ip := ""
@@ -132,7 +168,7 @@ func join_by_code(code: String, player_name: String) -> void:
 		while udp.get_available_packet_count() > 0:
 			var raw := udp.get_packet()
 			var sender_ip := udp.get_packet_ip()
-			if raw.get_string_from_utf8() == expected_reply and sender_ip != "":
+			if sender_ip != "" and reply_matches.call(raw.get_string_from_utf8()):
 				found_ip = sender_ip
 				break
 		if found_ip != "":
@@ -143,14 +179,7 @@ func join_by_code(code: String, player_name: String) -> void:
 		since_send += DISCOVERY_POLL_INTERVAL
 
 	udp.close()
-
-	if found_ip == "":
-		code_lookup_failed.emit()
-		return
-
-	var err := _connect_to_ip(found_ip, player_name)
-	if err != OK:
-		code_lookup_failed.emit()
+	return found_ip
 
 
 ## Fallback for networks that block UDP broadcast (many phone hotspots, and
@@ -328,11 +357,17 @@ func _poll_discovery_requests() -> void:
 		var sender_ip := _discovery_socket.get_packet_ip()
 		var sender_port := _discovery_socket.get_packet_port()
 		var text := raw.get_string_from_utf8()
-		if not text.begins_with("SSMTTM_DISCOVER:"):
-			continue
 
-		var requested_code := text.substr("SSMTTM_DISCOVER:".length()).strip_edges()
-		if requested_code != lobby_code:
+		# Two request shapes: a specific code (join_by_code) or a wildcard
+		# (join_auto's "just find me a game" button) - either way the host
+		# answers with the same "SSMTTM_HOST:<code>" reply.
+		var matches := false
+		if text.begins_with("SSMTTM_DISCOVER:"):
+			matches = text.substr("SSMTTM_DISCOVER:".length()).strip_edges() == lobby_code
+		elif text == "SSMTTM_DISCOVER_ANY":
+			matches = true
+
+		if not matches:
 			continue
 		if sender_ip == "" or sender_port <= 0:
 			continue
@@ -371,15 +406,59 @@ func _on_peer_connected(_id: int) -> void:
 	pass  # wait for their register_player() RPC so we know their chosen name
 
 
+## Fires on EVERY peer, not just the host - Godot notifies all of them when
+## someone drops - so the feed line is emitted locally rather than broadcast.
+## Routing it through MatchManager.broadcast_event would send one copy per peer
+## and print the same departure four times on every screen.
 func _on_peer_disconnected(id: int) -> void:
 	# Erased first: a peer that dropped mid-load will never report in, and
 	# leaving it here would make the others sit out the full load timeout.
 	arena_ready_peers.erase(id)
-	if players.has(id):
-		players.erase(id)
-		if is_host():
-			_rpc_update_player_list.rpc(players)
-		player_list_changed.emit()
+
+	if not players.has(id):
+		return
+
+	var who: String = players[id]
+	players.erase(id)
+	roles.erase(id)
+
+	if is_host():
+		_rpc_update_player_list.rpc(players)
+	player_list_changed.emit()
+
+	MatchManager.event_logged.emit("%s left the game" % who, "warning")
+	player_left.emit(id, who)
+
+
+## Whether the host could start another round right now.
+##
+## The lobby, the end-of-match overlay and start_practice_match() were each
+## deciding this for themselves, and the overlay's copy was simply missing -
+## it offered "Play Again" no matter how many people had left, then called a
+## function that refused and returned silently. The button appeared to do
+## nothing, which reads as the game having frozen.
+func can_start_another_round() -> bool:
+	if not is_host():
+		return false
+	if SeriesManager.is_active and not SeriesManager.series_complete():
+		# A series is balanced for a full lobby; losing anyone ends it rather
+		# than quietly playing the remaining rounds at the wrong size.
+		return players.size() == MATCH_SIZE
+	return players.size() >= MIN_PRACTICE_PLAYERS
+
+
+## Why can_start_another_round() said no, phrased for a player. Empty when it
+## said yes.
+func round_blocked_reason() -> String:
+	if not is_host():
+		return ""
+	if SeriesManager.is_active and not SeriesManager.series_complete():
+		if players.size() != MATCH_SIZE:
+			return "Series needs %d players - %d left." % [MATCH_SIZE, players.size()]
+		return ""
+	if players.size() < MIN_PRACTICE_PLAYERS:
+		return "Not enough players to start another round."
+	return ""
 
 
 # --- Peer lifecycle (client side) ---
@@ -427,4 +506,10 @@ func _rpc_assign_roles(new_roles: Dictionary) -> void:
 func _rpc_load_arena(map_id: String) -> void:
 	current_map_id = map_id
 	match_starting.emit()
-	get_tree().change_scene_to_file(ARENA_SCENE)
+	# Behind the curtain rather than a bare change_scene_to_file: the arena
+	# plus its map is a second or more of blocking work, and doing it raw left
+	# the lobby frozen on screen looking like a crash. The map is named as a
+	# preload so it comes off the worker thread here instead of blocking inside
+	# arena.gd's _load_map(), which runs during _ready() where nothing can
+	# yield. Deliberately not awaited - change_scene drives itself.
+	LoadingScreen.change_scene(ARENA_SCENE, [MapRegistry.scene_path(map_id)])

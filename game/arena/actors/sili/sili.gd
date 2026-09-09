@@ -172,10 +172,10 @@ func _try_tag(body: Node2D) -> void:
 	#
 	# The Sili is named now instead of being called "Sili": with the role
 	# rotating every round, "who caught them" is the interesting half of the
-	# line, and the colour already says which side each name is on.
-	MatchManager.broadcast_event("%s tagged %s" % [
-		MatchManager.sili_name(_own_name()),
-		MatchManager.tubig_name(_name_of(body))], "tag")
+	# line. event_feed.gd colours the whole line by kind ("tag" = red-orange),
+	# so the names themselves are plain text - there's no per-name BBCode to
+	# apply on top of that.
+	MatchManager.broadcast_event("%s tagged %s" % [_own_name(), _name_of(body)], "tag")
 
 
 func _update_tag_cooldowns(delta: float) -> void:

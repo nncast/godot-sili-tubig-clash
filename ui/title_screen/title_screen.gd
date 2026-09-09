@@ -34,6 +34,7 @@ const INFO_COLOR := Color(0.80, 0.82, 0.86)
 @onready var join_status: Label = $JoinPanel/Panel/Margin/VBox/JoinStatus
 @onready var join_confirm_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinConfirmButton
 @onready var join_cancel_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinCancelButton
+@onready var auto_join_button: Button = $JoinPanel/Panel/Margin/VBox/AutoJoinButton
 
 ## Set the moment the player backs out of a join attempt (Cancel or Escape) and
 ## cleared the moment a new one starts. Guards the async replies below - a code
@@ -41,6 +42,11 @@ const INFO_COLOR := Color(0.80, 0.82, 0.86)
 ## by a stale code_lookup_failed/connection_failed would still pop an error, or
 ## a stale success would still drop the player into a lobby they already quit.
 var _join_cancelled: bool = false
+
+## True while the CURRENT lookup is an Auto Join (searching for any nearby
+## game) rather than a typed code/IP - only changes which wording
+## _on_code_lookup_failed shows, since both paths fail the same way.
+var _auto_join_in_progress: bool = false
 
 @onready var how_to_panel: Control = $HowToPanel
 @onready var how_to_body: RichTextLabel = $HowToPanel/Panel/Margin/VBox/Body
@@ -64,6 +70,7 @@ func _ready() -> void:
 
 	join_confirm_button.pressed.connect(_on_join_confirm_pressed)
 	join_cancel_button.pressed.connect(_on_join_cancel_pressed)
+	auto_join_button.pressed.connect(_on_auto_join_pressed)
 	code_edit.text_submitted.connect(func(_t: String) -> void: _on_join_confirm_pressed())
 
 	$ExitPanel/Panel/Margin/VBox/ButtonsRow/ExitConfirmButton.pressed.connect(_on_exit_confirmed)
@@ -94,7 +101,9 @@ func _on_join_pressed() -> void:
 	code_edit.text = ""
 	code_edit.grab_focus()
 	join_confirm_button.disabled = false
+	auto_join_button.disabled = false
 	_join_cancelled = false
+	_auto_join_in_progress = false
 
 
 func _on_join_cancel_pressed() -> void:
@@ -111,6 +120,7 @@ func _on_join_cancel_pressed() -> void:
 	_set_join_status("", INFO_COLOR)
 	join_button.grab_focus()
 	join_confirm_button.disabled = false
+	auto_join_button.disabled = false
 
 
 ## Routes to whichever surface the player can actually see. A join attempt can
@@ -138,8 +148,10 @@ func _on_join_confirm_pressed() -> void:
 	var entry := code_edit.text.strip_edges()
 
 	if _looks_like_ip(entry):
+		_auto_join_in_progress = false
 		_set_join_status("Connecting to %s..." % entry, INFO_COLOR)
 		join_confirm_button.disabled = true
+		auto_join_button.disabled = true
 		NetworkManager.join_by_ip(entry, _resolved_name())
 		return
 
@@ -148,9 +160,26 @@ func _on_join_confirm_pressed() -> void:
 		code_edit.grab_focus()
 		return
 
+	_auto_join_in_progress = false
 	_set_join_status("Looking for lobby %s..." % entry, INFO_COLOR)
 	join_confirm_button.disabled = true
+	auto_join_button.disabled = true
 	NetworkManager.join_by_code(entry, _resolved_name())
+
+
+## The "Auto Join" button: skips the code entirely and asks the LAN/hotspot
+## whether anyone is hosting at all. Meant for the common case - one other
+## person on the same Wi-Fi - where making someone read out a 4-digit code is
+## friction for no reason.
+func _on_auto_join_pressed() -> void:
+	if auto_join_button.disabled:
+		return
+
+	_auto_join_in_progress = true
+	_set_join_status("Searching this network for a game...", INFO_COLOR)
+	join_confirm_button.disabled = true
+	auto_join_button.disabled = true
+	NetworkManager.join_auto(_resolved_name())
 
 
 ## Fires once we're actually registered with the host - safe to move on.
@@ -172,15 +201,22 @@ func _on_connection_failed() -> void:
 		"Couldn't reach the host.\nCheck you're on the same Wi-Fi, and that the host's firewall allows the game.",
 		ERROR_COLOR)
 	join_confirm_button.disabled = false
+	auto_join_button.disabled = false
 
 
 func _on_code_lookup_failed() -> void:
 	if _join_cancelled:
 		return
-	_set_join_status(
-		"No lobby found with that code.\nOn a phone hotspot, type the host's IP instead - it's on their lobby screen.",
-		ERROR_COLOR)
+	if _auto_join_in_progress:
+		_set_join_status(
+			"No games found on this network.\nAsk the host for their lobby code or IP and type it in above.",
+			ERROR_COLOR)
+	else:
+		_set_join_status(
+			"No lobby found with that code.\nOn a phone hotspot, type the host's IP instead - it's on their lobby screen.",
+			ERROR_COLOR)
 	join_confirm_button.disabled = false
+	auto_join_button.disabled = false
 
 
 func _looks_like_ip(text: String) -> bool:

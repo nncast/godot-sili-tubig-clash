@@ -20,14 +20,42 @@ enum State { NORMAL, BURNING, DEAD }
 ## match - so it lives on the server side of the fence with `state`.
 @export var MAX_LIVES: int = 3
 
+## --- Rescue immunity ---
+## Seconds after a rescue during which a tag simply does not land.
+##
+## Without this the Sili can stand on top of a burning player, wait out the
+## rescuer's channel, and re-tag the moment they stand up - a burning player is
+## rooted to the exact spot they were tagged, so the Sili is very often still
+## standing right there. That turned "rescued" and "tagged again" into the same
+## frame, over and over: the same heart lost repeatedly for one rescue attempt.
+## 1.5s is deliberately short: enough to break contact and start running, not
+## enough to walk past the Sili for free.
+@export var RESCUE_IMMUNITY_TIME: float = 1.5
+
 signal state_changed(new_state: State)
 signal burned  # fired the instant a tag lands
 signal cooled  # fired when a rescue completes
 signal died    # fired when the burn timeout expires unrescued
 signal lives_changed(lives_left: int)
+signal immunity_changed(is_immune: bool)
 signal burn_time_changed(seconds_left: int)
 
 var _burn_elapsed: float = 0.0
+var _immunity_remaining: float = 0.0
+
+## Replicated for the same reason `state` is, plus one of its own: the Sili's
+## hit detection runs on the Sili's OWN client (see sili.gd's _try_tag), so if
+## immunity only existed on the server the Sili would hear the tag sound, see
+## the feed line, and then watch the target keep running - feedback for a hit
+## that never happened. Publishing the flag lets the Sili's client decline to
+## claim the tag in the first place, while the server still enforces it in
+## ignite() for any client that ignores the flag.
+var is_immune: bool = false:
+	set(value):
+		if value == is_immune:
+			return
+		is_immune = value
+		immunity_changed.emit(value)
 
 ## Whole seconds left on the burn, or 0 when not burning.
 ##
@@ -90,6 +118,14 @@ func _process(delta: float) -> void:
 	if _is_networked() and not is_multiplayer_authority():
 		return
 
+	# Immunity runs down regardless of state - it is granted by a rescue, which
+	# by definition leaves the player NORMAL, so gating it on BURNING would mean
+	# it never ticked at all.
+	if _immunity_remaining > 0.0:
+		_immunity_remaining = maxf(0.0, _immunity_remaining - delta)
+		if _immunity_remaining <= 0.0:
+			is_immune = false
+
 	if state != State.BURNING:
 		_burn_elapsed = 0.0
 		burn_seconds_left = 0
@@ -118,6 +154,8 @@ func _process(delta: float) -> void:
 func ignite() -> void:
 	if state != State.NORMAL:
 		return  # already Burning or Dead, a fresh tag does nothing
+	if is_immune:
+		return  # just rescued - the tag lands on nothing and costs no heart
 
 	lives_left = max(0, lives_left - 1)
 
@@ -136,6 +174,11 @@ func ignite() -> void:
 func cool_fully() -> void:
 	if state != State.BURNING:
 		return
+	# Granted BEFORE the state flip so that any listener reacting to `cooled`
+	# on this machine already sees is_immune true, rather than reading a window
+	# that opens a frame later.
+	_immunity_remaining = RESCUE_IMMUNITY_TIME
+	is_immune = true
 	state = State.NORMAL
 
 

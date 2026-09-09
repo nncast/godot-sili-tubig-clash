@@ -23816,6 +23816,7 @@ position = Vector2(1260, 140)
 [node name="tunnel" type="Node2D" parent="Tunnels" unique_id=367968670]
 
 [node name="TunnelA" type="Area2D" parent="Tunnels/tunnel" unique_id=1750330084]
+collision_mask = 2
 position = Vector2(1294, 227)
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelB")
@@ -23826,6 +23827,7 @@ position = Vector2(-1, 1)
 shape = SubResource("CircleShape2D_ofxeq")
 
 [node name="TunnelB" type="Area2D" parent="Tunnels/tunnel" unique_id=1853986071]
+collision_mask = 2
 position = Vector2(1599, 162)
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelA")
@@ -23838,6 +23840,7 @@ shape = SubResource("CircleShape2D_ofxeq")
 [node name="tunnel2" type="Node2D" parent="Tunnels" unique_id=1060857959]
 
 [node name="TunnelA" type="Area2D" parent="Tunnels/tunnel2" unique_id=340715555]
+collision_mask = 2
 position = Vector2(1940, 460)
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelB")
@@ -23848,6 +23851,7 @@ position = Vector2(-1, 1)
 shape = SubResource("CircleShape2D_ofxeq")
 
 [node name="TunnelB" type="Area2D" parent="Tunnels/tunnel2" unique_id=457196726]
+collision_mask = 2
 position = Vector2(1155, -363)
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelA")
@@ -23860,6 +23864,7 @@ shape = SubResource("CircleShape2D_ofxeq")
 [node name="tunnel3" type="Node2D" parent="Tunnels" unique_id=1070707379]
 
 [node name="TunnelA" type="Area2D" parent="Tunnels/tunnel3" unique_id=1049932393]
+collision_mask = 2
 position = Vector2(1938, -8)
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelB")
@@ -23870,6 +23875,7 @@ position = Vector2(-1, 1)
 shape = SubResource("CircleShape2D_ofxeq")
 
 [node name="TunnelB" type="Area2D" parent="Tunnels/tunnel3" unique_id=96257457]
+collision_mask = 2
 position = Vector2(2226, -235)
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelA")

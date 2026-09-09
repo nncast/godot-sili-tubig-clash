@@ -180,9 +180,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -190.0
-offset_top = -125.0
+offset_top = -165.0
 offset_right = 190.0
-offset_bottom = 125.0
+offset_bottom = 165.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -211,6 +211,19 @@ theme_override_font_sizes/font_size = 15
 autowrap_mode = 3
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="OrLabel" type="Label" parent="JoinPanel/Panel/Margin/VBox" unique_id=1898757290]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.62, 0.6, 0.58, 1)
+text = "or"
+horizontal_alignment = 1
+
+[node name="AutoJoinButton" type="Button" parent="JoinPanel/Panel/Margin/VBox" unique_id=1898757291]
+layout_mode = 2
+tooltip_text = "Search this Wi-Fi/hotspot for a game and join it - no code needed."
+theme_override_font_sizes/font_size = 20
+text = "Auto Join"
 
 [node name="ButtonsRow" type="HBoxContainer" parent="JoinPanel/Panel/Margin/VBox" unique_id=1898757295]
 layout_mode = 2

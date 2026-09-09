@@ -106,6 +106,10 @@ func _build_interaction_area() -> void:
 	_area.name = "InteractionArea"
 	_area.position = AREA_CENTER
 	_area.monitoring = true
+	# Players moved to their own physics layer (2) so they stop shoving each
+	# other around - see sili.tscn/tubig.tscn. This area still has to find
+	# them, so its mask has to follow them off the default layer (1).
+	_area.collision_mask = 2
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = AREA_RADIUS

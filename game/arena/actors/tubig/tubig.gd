@@ -149,6 +149,18 @@ func _ready() -> void:
 	add_child(surface_audio)
 
 
+## Sprint intent comes from the `run` action only - see sili.gd's identical
+## handler for the long version. Short version: Input.is_action_pressed keeps
+## the physical key latched across an alt-tab, so releasing focus without this
+## left a player sprinting (and draining stamina) with nothing held down the
+## moment they clicked back into the game.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT \
+			or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		if Input.is_action_pressed("run"):
+			Input.action_release("run")
+
+
 func _build_hidden_label() -> void:
 	_hidden_label = Label.new()
 	_hidden_label.text = "HIDDEN"

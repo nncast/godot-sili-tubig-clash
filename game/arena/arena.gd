@@ -89,6 +89,7 @@ func _ready() -> void:
 
 	MatchManager.time_updated.connect(_on_time_updated)
 	MatchManager.match_ended.connect(_on_match_ended)
+	NetworkManager.player_left.connect(_on_player_left)
 
 	_setup_settings_popup()
 	_setup_connection_indicator()
@@ -339,6 +340,14 @@ func _on_player_spawned(_node: Node) -> void:
 
 
 func _refresh_team_state() -> void:
+	# Can arrive after the arena has already left the tree - a deferred call
+	# from _on_player_left queued the moment before a scene change, or the
+	# same NetworkManager signal reaching an arena that just got torn down.
+	# get_tree() returns null in that case, not an empty tree, so this has to
+	# be an early return rather than a call that would otherwise error out.
+	if not is_inside_tree():
+		return
+
 	var previous_count := _tubig_players.size()
 	_tubig_players = get_tree().get_nodes_in_group("tubig")
 
@@ -578,15 +587,21 @@ func _drop_panel_connections() -> void:
 	_panel_connections.clear()
 
 
-## The Sili wins only when every Tubig is DEAD - permanently out.
+## The Sili wins the moment nobody is left who could still perform a rescue.
 ##
-## This used to end the match as soon as nobody was in the NORMAL state, which
-## counted a burning player as already beaten. Burning is temporary by design:
-## they are rooted, but a teammate has fifteen seconds to reach them. Ending
-## there threw away the most dramatic moment the game has - four burning
-## players and one rescue channel running - and made the rescue mechanic
-## meaningless exactly when it mattered most. Now a burn has to actually time
-## out for it to count.
+## Checked on every tag AND every death (see _refresh_team_state's connect
+## calls). A Tubig still NORMAL could in principle reach and save a burning
+## teammate, so that's the only state that keeps the round alive - BURNING
+## and DEAD are both "can't act" from the win check's point of view. Ending
+## only on all-DEAD (a burn has to fully time out) sounds safer, but it isn't:
+## rescuing a burning Tubig requires another Tubig who is free to move, so the
+## instant everyone remaining is burning or dead, the round is already
+## unwinnable - waiting out the timer just delays a result that's already
+## decided. That delay was very visible in a 1v1: the sole Tubig gets tagged,
+## there is nobody left who could ever rescue them, and the match kept running
+## for the rest of the burn timer before declaring the win. The rescue
+## mechanic's drama is unaffected - it's exactly preserved whenever at least
+## one Tubig is still NORMAL and the round has to keep going for them.
 func _check_for_sili_win() -> void:
 	if not multiplayer.is_server():
 		return
@@ -594,9 +609,39 @@ func _check_for_sili_win() -> void:
 		if not is_instance_valid(tubig):
 			continue
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
-		if heat and not heat.is_dead():
-			return  # someone is still free, or still savable
+		if heat and not heat.is_incapacitated():
+			return  # someone is still free to attempt a rescue
 	MatchManager.end_match(true)
+
+
+## Nobody ever removes a spawned character when its owner disconnects -
+## SiliSpawner/TubigSpawner only ever add - so without this a departed
+## player's body stayed in the world forever: a corpse the Sili could still
+## "tag" for nothing, a permanent entry in the team panel, a target
+## SpectatorView could get stuck watching, and - critically for
+## _check_for_sili_win - a body that was never DEAD or BURNING and so counted
+## as "still free" forever, meaning a match could never end once its last
+## active Tubig simply left instead of being caught.
+##
+## Runs on every peer (NetworkManager.player_left fires everywhere). Both
+## deferred calls below are safe to fire unconditionally on a client too -
+## _check_for_sili_win gates itself on multiplayer.is_server(), the same
+## pattern it already relies on being connected to every Tubig's burned/died
+## signals on every peer.
+func _on_player_left(peer_id: int, _display_name: String) -> void:
+	var node_name := "player_%d" % peer_id
+	var body := sili_container.get_node_or_null(node_name)
+	if body == null:
+		body = tubig_container.get_node_or_null(node_name)
+	if body != null:
+		body.queue_free()
+
+	# Deferred: queue_free() only removes the node at the end of this frame,
+	# so _refresh_team_state's group query would still see the departed body
+	# if it ran right now. _check_for_sili_win is queued after it for the same
+	# reason - it reads _tubig_players, which only _refresh_team_state updates.
+	call_deferred("_refresh_team_state")
+	call_deferred("_check_for_sili_win")
 
 
 func _on_time_updated(time_remaining: float, _match_duration: float) -> void:

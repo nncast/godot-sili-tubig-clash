@@ -92,7 +92,6 @@ var _hidden_label: Label = null
 @onready var hearts: Array = [$ui/HeartsRow/Heart1, $ui/HeartsRow/Heart2, $ui/HeartsRow/Heart3]
 @onready var heat_status: HeatStatus = $HeatStatus
 @onready var interaction_area: Area2D = $InteractionArea
-@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 ## Set by whichever Tunnel mouth we're standing in - see tunnel.gd. Null means
 ## there's nothing to travel through.
@@ -678,14 +677,19 @@ func _update_hearts(lives_remaining: int) -> void:
 ## Runs on EVERY peer, because HeatStatus.state is replicated - which is what
 ## makes these audible to bystanders and not just to the person it happened to.
 func _on_heat_state_changed(new_state: HeatStatus.State) -> void:
-	# A burning or dead body is rooted and can no longer move out of the way,
-	# so leaving its collision on meant anyone who walked into it could shove
-	# the corpse around the map. Turning the shape off on every peer (the
-	# state is replicated, so this runs everywhere the body exists) makes an
-	# incapacitated Tubig passable instead, without touching how they collide
-	# while still playing normally.
-	collision_shape.disabled = new_state != HeatStatus.State.NORMAL
-
+	# collision_shape used to be disabled here so a rooted, incapacitated body
+	# couldn't be shoved around by anyone walking into it. That's now handled
+	# by the player collision_layer/mask split (player bodies are layer 2,
+	# masked to only collide with the world on layer 1, so they never push
+	# each other regardless of state) - see sili.tscn/tubig.tscn.
+	#
+	# Disabling this shape here ALSO removed the body from every Area2D
+	# overlap check, since it's the only CollisionShape2D on the character:
+	# a burning ally became invisible to a rescuer's InteractionArea
+	# (_find_burning_ally's get_overlapping_bodies()), so rescue silently
+	# stopped triggering the moment someone got tagged. Leaving it enabled
+	# keeps the body detectable while state already prevents anything from
+	# physically pushing it.
 	if new_state == HeatStatus.State.BURNING:
 		animated_sprite.play("heat_" + last_direction)
 	elif new_state == HeatStatus.State.DEAD:

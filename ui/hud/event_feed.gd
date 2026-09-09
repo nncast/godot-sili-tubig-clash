@@ -1,9 +1,13 @@
 extends VBoxContainer
 
-## Bottom-right match feed: "Sili tagged Ana", "Ben rescued Ana", speed-up
-## warnings. Replaces the notices that used to be glued onto the timer label,
-## which had to fight the clock for space and could only ever show a status,
-## never an event.
+## Bottom-right match feed: "Sili tagged Ana", "Ben rescued Ana", fountain
+## drinks, and player departures.
+##
+## Match-wide announcements ("Sili is faster", "Rescues are locked") do NOT
+## come through here any more - see arena.gd's AnnouncementLabel, anchored
+## right under the clock. Those apply to everyone regardless of what they just
+## did, so they read better as a banner you can't miss than as one more line
+## in a corner feed built for per-player events.
 ##
 ## Entries fade on a timer and the oldest is pushed out once there are more than
 ## MAX_ENTRIES, so a busy moment can't grow the list off the top of the screen.
@@ -33,8 +37,6 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	MatchManager.event_logged.connect(_on_event_logged)
-	MatchManager.sili_speed_changed.connect(_on_sili_speed_changed)
-	MatchManager.rescues_locked.connect(_on_rescues_locked)
 
 
 func _on_event_logged(message: String, kind: String) -> void:
@@ -49,17 +51,6 @@ func _on_event_logged(message: String, kind: String) -> void:
 		"buff":
 			color = COLOR_BUFF
 	push_entry(message, color)
-
-
-## Stage 0 is the match's starting speed, so there's nothing to announce.
-func _on_sili_speed_changed(multiplier: float, stage: int) -> void:
-	if stage <= 0:
-		return
-	push_entry("Sili is faster  (+%d%%)" % roundi((multiplier - 1.0) * 100.0), COLOR_WARNING)
-
-
-func _on_rescues_locked() -> void:
-	push_entry("Rescues are locked", COLOR_WARNING)
 
 
 func push_entry(message: String, color: Color) -> void:

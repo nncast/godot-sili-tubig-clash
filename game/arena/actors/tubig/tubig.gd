@@ -32,7 +32,10 @@ const FRICTION = 1200.0
 ## --- Stamina System ---
 @export var MAX_STAMINA: float = 100.0
 @export var STAMINA_DRAIN_RATE: float = 25.0
-@export var STAMINA_REGEN_RATE: float = 20.0
+## Slowed from 20.0 - see sili.gd's identical change. Both roles share the same
+## stamina model by design, so a Tubig and a Sili should feel the same cost
+## for spamming sprint, not just the Sili.
+@export var STAMINA_REGEN_RATE: float = 12.0
 @export var EXHAUSTION_DURATION: float = 2.0
 
 ## --- Rescue System ---
@@ -83,11 +86,19 @@ var _progress_broadcast_accum: float = 0.0
 var _conceal_timer: float = 0.0
 var _sighting_accum: float = 0.0
 var _last_reported_sighting: bool = false
+## Ticked down by _update_sili_sighting. While positive, this Tubig reports
+## seeing the Sili regardless of what the camera actually shows - see
+## trigger_sili_reveal(), called by reveal_spot.gd. A "tactical glimpse": it
+## feeds the SAME team-wide sighting flag a real camera sighting would, so it
+## shows and clears exactly like one, but it does not require the Sili to
+## ever be on this player's screen.
+var _reveal_override_remaining: float = 0.0
 var _hidden_label: Label = null
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ui_layer: CanvasLayer = $ui
 @onready var stamina_bar: ProgressBar = $ui/StaminaBar
+@onready var boost_label: Label = $ui/BoostLabel
 @onready var rescue_bar: ProgressBar = $ui/RescueBar
 @onready var hearts: Array = [$ui/HeartsRow/Heart1, $ui/HeartsRow/Heart2, $ui/HeartsRow/Heart3]
 @onready var heat_status: HeatStatus = $HeatStatus
@@ -226,6 +237,10 @@ func _physics_process(delta: float) -> void:
 
 	var is_running := wants_to_run and is_moving and not is_exhausted and stamina > 0.0 and not _is_channeling
 
+	# Local-only feedback (ui_layer is hidden for every peer but the one
+	# driving this body), so there's nothing to replicate here.
+	boost_label.visible = is_running
+
 	_update_stamina(delta, is_running)
 
 	if _is_channeling:
@@ -345,16 +360,28 @@ func _current_hiding_spot() -> Node2D:
 # --- Spotting the Sili ---
 
 func _update_sili_sighting(delta: float) -> void:
+	if _reveal_override_remaining > 0.0:
+		_reveal_override_remaining = maxf(0.0, _reveal_override_remaining - delta)
+
 	_sighting_accum += delta
 	if _sighting_accum < SIGHTING_INTERVAL:
 		return
 	_sighting_accum = 0.0
 
-	var seen := _can_see_sili()
+	var seen := _can_see_sili() or _reveal_override_remaining > 0.0
 	if seen == _last_reported_sighting:
 		return
 	_last_reported_sighting = seen
 	SightingTracker.report_sighting(seen)
+
+
+## Called by reveal_spot.gd on body_entered. A few seconds of "the Sili is
+## visible to your team" that costs nothing to walk into and grants no lasting
+## vision - the whole point is a glimpse, not a spotter drone. Takes the
+## longer of what's left and the new grant rather than stacking, so re-walking
+## through the same zone can't chain into a much longer reveal than intended.
+func trigger_sili_reveal(duration: float) -> void:
+	_reveal_override_remaining = maxf(_reveal_override_remaining, duration)
 
 
 func _can_see_sili() -> bool:

@@ -215,13 +215,38 @@ func _on_player_list_changed() -> void:
 		_refresh_advance_controls()
 
 
-## The host vanished. There is no round to wait for and no lobby to return to,
-## so this is not a choice worth offering.
+## The host vanished. There is no round to wait for and no lobby to return to
+## - host migration isn't supported, so however many Sili/Tubig are still
+## standing, the round is unrecoverable either way. This is the only path back
+## to the title for a disconnect that happens WHILE the match is still being
+## played (the result overlay isn't up yet): if it's already showing (a round
+## just ended and everyone's looking at the standings) this just swaps the
+## hint text and lets the existing return-to-title timer do its job; otherwise
+## it raises the overlay itself so the modal message is never skipped.
 func _on_server_disconnected() -> void:
 	if not visible:
+		_show_host_left_modal()
 		return
 	_hint_label.text = "The host left the game. Returning to the title..."
 	_replay_button.disabled = true
+	_leave_to_title_soon()
+
+
+## Forces the overlay up outside the normal match_ended path - there is no
+## verdict to show, just the one message every client needs to see before the
+## screen changes out from under them.
+func _show_host_left_modal() -> void:
+	_verdict_label.text = "Game Over"
+	_verdict_label.add_theme_color_override("font_color", COLOR_LOSE)
+	_detail_label.text = "Host has left the match. Game cannot continue."
+	_standings_panel.visible = false
+	_replay_button.visible = false
+	_hint_label.text = "Returning to the title..."
+
+	visible = true
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	_title_button.grab_focus()
+
 	_leave_to_title_soon()
 
 

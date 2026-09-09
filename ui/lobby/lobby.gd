@@ -39,6 +39,11 @@ const WAITING_COLOR := Color(0.62, 0.58, 0.55)
 @onready var notice_message: Label = $NoticePanel/Panel/Margin/VBox/Message
 @onready var notice_ok_button: Button = $NoticePanel/Panel/Margin/VBox/OkButton
 
+## Set only for the host-left notice - lets the shared OK button either just
+## dismiss a routine notice (discovery unavailable) or actually leave the
+## lobby, depending on which one is currently showing.
+var _notice_leads_to_title: bool = false
+
 
 func _ready() -> void:
 	NetworkManager.player_list_changed.connect(_refresh_player_list)
@@ -82,6 +87,9 @@ func _show_notice(message: String) -> void:
 
 func _on_notice_ok_pressed() -> void:
 	notice_panel.visible = false
+	if _notice_leads_to_title:
+		_notice_leads_to_title = false
+		get_tree().change_scene_to_file("res://ui/title_screen/title_screen.tscn")
 
 
 ## The IP is always shown: on phone hotspots and guest Wi-Fi the broadcast that
@@ -109,9 +117,11 @@ func _refresh_player_list() -> void:
 		player_list.add_item(str(NetworkManager.players[id]) + suffix)
 
 	# Empty seats are drawn rather than left blank, so the host sees at a
-	# glance how many people are still missing instead of counting names.
+	# glance how many are still missing - one generic row rather than a
+	# numbered slot per seat, since "player 2" means nothing to whoever is
+	# about to fill it.
 	for i in range(count, needed):
-		var idx := player_list.add_item("- waiting for player %d -" % (i + 1))
+		var idx := player_list.add_item("WAITING FOR PLAYERS")
 		player_list.set_item_disabled(idx, true)
 		player_list.set_item_custom_fg_color(idx, Color(0.55, 0.55, 0.58))
 
@@ -154,5 +164,21 @@ func _on_leave_pressed() -> void:
 	get_tree().change_scene_to_file("res://ui/title_screen/title_screen.tscn")
 
 
+## Host migration isn't supported, so a host dropping while everyone is still
+## sitting in the lobby is exactly as unrecoverable as it is mid-match - see
+## match_result.gd's version of this same rule. Shown as a modal rather than
+## a silent scene change so nobody watching the player list is left wondering
+## why they were suddenly bounced.
 func _on_disconnected() -> void:
+	_notice_leads_to_title = true
+	_show_notice("Host has left the match. Game cannot continue.")
+	# Auto-advance in case nobody clicks OK - same 2.5s beat match_result.gd
+	# uses for the equivalent mid-match notice.
+	get_tree().create_timer(2.5).timeout.connect(_auto_return_to_title)
+
+
+func _auto_return_to_title() -> void:
+	if not _notice_leads_to_title or not is_inside_tree():
+		return
+	_notice_leads_to_title = false
 	get_tree().change_scene_to_file("res://ui/title_screen/title_screen.tscn")

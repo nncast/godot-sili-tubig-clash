@@ -14,6 +14,7 @@
 [ext_resource type="PackedScene" uid="uid://b6q8qvmkhf7gb" path="res://game/props/umbrella/close/umbrellaclosewhite.tscn" id="8_6hkp2"]
 [ext_resource type="PackedScene" uid="uid://roht4wngvwm2" path="res://game/props/umbrella/open/umbrellaopenblue.tscn" id="9_x840e"]
 [ext_resource type="Script" uid="uid://iqa5e2sh803a" path="res://game/props/tunnel/tunnel.gd" id="11_60hbj"]
+[ext_resource type="Script" uid="uid://digoiwa53uiyt" path="res://game/props/reveal_spot/reveal_spot.gd" id="12_reveal"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_dfea0"]
 texture = ExtResource("1_x840e")
@@ -32871,6 +32872,10 @@ position = Vector2(1260, 140)
 
 [node name="fountain" parent="objects" unique_id=1666262051 instance=ExtResource("6_aa83m")]
 position = Vector2(1692, 100)
+
+[node name="RevealSpot" type="Node2D" parent="objects" unique_id=1666262060]
+position = Vector2(740, 160)
+script = ExtResource("12_reveal")
 
 [node name="hole" type="Node2D" parent="objects" unique_id=1266933791]
 

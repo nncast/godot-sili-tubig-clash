@@ -7,7 +7,12 @@ const FRICTION = 1200.0
 ## --- Stamina System (reused so Sili also has a sprint/exhaustion loop) ---
 @export var MAX_STAMINA: float = 100.0
 @export var STAMINA_DRAIN_RATE: float = 25.0
-@export var STAMINA_REGEN_RATE: float = 20.0
+## Slowed from 20.0: at the old rate a player could tap-sprint constantly and
+## barely feel the cost, which made the stamina bar decorative rather than a
+## real resource. The slower refill means every sprint is a real decision -
+## and a real gap where a chase can actually be lost or won - instead of
+## something spammed away in a second of standing still.
+@export var STAMINA_REGEN_RATE: float = 12.0
 @export var EXHAUSTION_DURATION: float = 2.0
 
 ## --- Tag ability ---
@@ -29,6 +34,7 @@ var _tag_cooldowns: Dictionary = {}
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ui_layer: CanvasLayer = $ui
 @onready var stamina_bar: ProgressBar = $ui/StaminaBar
+@onready var boost_label: Label = $ui/BoostLabel
 @onready var tag_hitbox: Area2D = $TagHitbox
 
 
@@ -93,6 +99,10 @@ func _physics_process(delta: float) -> void:
 	var wants_to_run := Input.is_action_pressed("run")
 	var is_moving := input_vector != Vector2.ZERO
 	var is_running := wants_to_run and is_moving and not is_exhausted and stamina > 0.0
+
+	# Local-only feedback (ui_layer is hidden for every peer but the one
+	# driving this body), so there's nothing to replicate here.
+	boost_label.visible = is_running
 
 	_update_stamina(delta, is_running)
 	_update_tag_cooldowns(delta)

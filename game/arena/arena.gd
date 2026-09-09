@@ -25,7 +25,14 @@ const BURN_TIMER_COLOR := Color(1.0, 0.76, 0.28)
 const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.36, 0.32)
 
 @onready var match_label: Label = $HUD/MatchLabel
+@onready var announcement_label: Label = $HUD/AnnouncementLabel
 @onready var team_panel: VBoxContainer = $HUD/TeamPanel
+@onready var exit_button: Button = $HUD/ExitButton
+@onready var exit_confirm_panel: Control = $HUD/ExitConfirmPanel
+@onready var exit_confirm_button: Button = $HUD/ExitConfirmPanel/Panel/Margin/VBox/ButtonsRow/ConfirmButton
+@onready var exit_cancel_button: Button = $HUD/ExitConfirmPanel/Panel/Margin/VBox/ButtonsRow/CancelButton
+@onready var guide_button: Button = $HUD/GuideButton
+@onready var guide_panel: PanelContainer = $HUD/GuidePanel
 @onready var settings_button: Button = $HUD/SettingsButton
 @onready var settings_popup: PanelContainer = $HUD/SettingsPopup
 @onready var master_slider: HSlider = $HUD/SettingsPopup/VBox/MasterRow/MasterSlider
@@ -95,6 +102,9 @@ func _ready() -> void:
 
 	_setup_settings_popup()
 	_setup_connection_indicator()
+	_setup_exit_confirm()
+	_setup_guide()
+	_setup_announcements()
 
 	# Bake the mini-map straight off the level's own tilemap, bottom-up, so it
 	# can never drift out of sync with the map the players are running around
@@ -277,6 +287,72 @@ func _on_play_again_pressed() -> void:
 func _on_leave_game_pressed() -> void:
 	NetworkManager.leave_game()
 	LoadingScreen.change_scene("res://ui/title_screen/title_screen.tscn")
+
+
+## A standalone Exit button on the HUD itself, separate from Settings > Leave
+## Game - that one required opening a menu first to find the way out, and
+## playtesters kept asking where it was. Confirmed rather than instant: this
+## button sits right where the fingers already are, and one misclick
+## shouldn't drop someone out of a match they meant to keep playing.
+func _setup_exit_confirm() -> void:
+	exit_button.pressed.connect(func(): exit_confirm_panel.visible = true)
+	exit_confirm_button.pressed.connect(_on_leave_game_pressed)
+	exit_cancel_button.pressed.connect(func(): exit_confirm_panel.visible = false)
+
+
+## F1 (standard) or H (mnemonic for "Help") toggles the controls guide. The
+## question mark button is the discoverable path to the same panel; either one
+## flips guide_panel and hides/shows the "?" so there's never a redundant way
+## to open something already open.
+func _setup_guide() -> void:
+	guide_button.pressed.connect(_toggle_guide)
+
+
+func _toggle_guide() -> void:
+	guide_panel.visible = not guide_panel.visible
+	guide_button.visible = not guide_panel.visible
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F1 or event.keycode == KEY_H:
+			_toggle_guide()
+			get_viewport().set_input_as_handled()
+			return
+	if event.is_action_pressed("ui_cancel") and exit_confirm_panel.visible:
+		exit_confirm_panel.visible = false
+		get_viewport().set_input_as_handled()
+
+
+## Match-wide state changes ("Sili is faster", "Rescues are locked") read as
+## announcements, not chatter - they apply to everyone regardless of what they
+## just did, unlike the tag/rescue/buff lines in HUD/EventFeed. Anchored right
+## under the clock instead of the corner feed so they're impossible to miss at
+## the moment they matter, and single-line rather than stacked since only one
+## of these is ever true at a time.
+func _setup_announcements() -> void:
+	announcement_label.text = ""
+	MatchManager.sili_speed_changed.connect(_on_sili_speed_changed)
+	MatchManager.rescues_locked.connect(_on_rescues_locked)
+
+
+func _on_sili_speed_changed(multiplier: float, stage: int) -> void:
+	if stage <= 0:
+		return  # stage 0 is the match's starting speed - nothing to announce
+	_show_announcement("Sili is getting faster  (+%d%%)" % roundi((multiplier - 1.0) * 100.0))
+
+
+func _on_rescues_locked() -> void:
+	_show_announcement("Rescues are locked")
+
+
+func _show_announcement(text: String) -> void:
+	announcement_label.text = text
+	var tween := create_tween()
+	tween.tween_interval(4.0)
+	tween.tween_callback(func():
+		if announcement_label.text == text:
+			announcement_label.text = "")
 
 
 ## Hidden entirely offline (tools/ test harnesses have no peer to report on).

@@ -143,8 +143,6 @@ func _build_ui() -> void:
 
 
 func _on_match_ended(sili_won: bool) -> void:
-	print("[match-end-debug] peer %d: match_result._on_match_ended(%s), showing overlay" % [
-		multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1, sili_won])
 	var i_won := _local_role() == ("sili" if sili_won else "tubig")
 
 	_verdict_label.text = "YOU WIN!" if i_won else "YOU LOSE!"

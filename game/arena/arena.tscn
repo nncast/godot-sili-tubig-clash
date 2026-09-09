@@ -230,6 +230,18 @@ layout_mode = 2
 text = "100%"
 horizontal_alignment = 2
 
+[node name="PlayAgainButton" type="Button" parent="HUD/SettingsPopup/VBox" unique_id=1116732311]
+layout_mode = 2
+text = "Play Again"
+
+[node name="HostStatusLabel" type="Label" parent="HUD/SettingsPopup/VBox" unique_id=1116732312]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.75, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "Waiting for host..."
+horizontal_alignment = 1
+autowrap_mode = 3
+
 [node name="LeaveGameButton" type="Button" parent="HUD/SettingsPopup/VBox" unique_id=1116732310]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.94, 0.62, 0.58, 1)

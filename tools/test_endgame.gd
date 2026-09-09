@@ -59,6 +59,16 @@ func _ready() -> void:
 	NetworkManager.players = {1: "Host", 2: "Bee", 3: "Cee"}
 	NetworkManager.roles = {1: "sili", 2: "tubig", 3: "tubig"}
 	NetworkManager.current_map_id = MapRegistry.DEFAULT_MAP
+	# Check the fake peers in to the arena-load handshake by hand.
+	#
+	# arena.gd holds the round until every id in NetworkManager.players has
+	# reported its arena scene built, and peers 2 and 3 here are dictionary
+	# entries rather than real processes - so nobody was ever going to report,
+	# and the round sat waiting for READY_TIMEOUT (20s) instead. This test
+	# asserts after six frames, so it saw zero spawned Tubigs and failed on
+	# its very first check. The handshake landed after this file was written
+	# and the file was never updated to match.
+	NetworkManager.arena_ready_peers = {1: true, 2: true, 3: true}
 
 	MatchManager.match_ended.connect(func(sili_won: bool): _ended_with = sili_won)
 

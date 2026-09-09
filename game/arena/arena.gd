@@ -36,6 +36,8 @@ const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.36, 0.32)
 @onready var music_value: Label = $HUD/SettingsPopup/VBox/MusicRow/MusicValue
 @onready var sfx_value: Label = $HUD/SettingsPopup/VBox/SFXRow/SFXValue
 @onready var ambience_value: Label = $HUD/SettingsPopup/VBox/AmbienceRow/AmbienceValue
+@onready var play_again_button: Button = $HUD/SettingsPopup/VBox/PlayAgainButton
+@onready var host_status_label: Label = $HUD/SettingsPopup/VBox/HostStatusLabel
 @onready var leave_game_button: Button = $HUD/SettingsPopup/VBox/LeaveGameButton
 @onready var close_settings_button: Button = $HUD/SettingsPopup/VBox/CloseButton
 @onready var connection_dot: Panel = $HUD/ConnectionIndicator/Dot
@@ -202,9 +204,71 @@ func _setup_settings_popup() -> void:
 	_bind_volume_row(ambience_slider, ambience_value,
 		GameSettings.ambience_volume, GameSettings.set_ambience_volume)
 
-	settings_button.pressed.connect(func(): settings_popup.visible = not settings_popup.visible)
+	settings_button.pressed.connect(_on_settings_button_pressed)
 	close_settings_button.pressed.connect(func(): settings_popup.visible = false)
 	leave_game_button.pressed.connect(_on_leave_game_pressed)
+	play_again_button.pressed.connect(_on_play_again_pressed)
+
+	# Somebody quitting can turn a restartable round into an unstartable one
+	# while this panel is sitting open, so the state is recomputed on every
+	# roster change rather than only when the panel is opened.
+	NetworkManager.player_list_changed.connect(_refresh_play_again_state)
+	_refresh_play_again_state()
+
+
+func _on_settings_button_pressed() -> void:
+	settings_popup.visible = not settings_popup.visible
+	if settings_popup.visible:
+		_refresh_play_again_state()
+
+
+## Only the host can restart a round, so only the host gets a button. Everybody
+## else gets told what they are waiting on.
+##
+## Hidden rather than disabled for a client: a greyed-out button still reads as
+## "something I could do if I got it right", and there is nothing they can get
+## right - the decision is not theirs. The label carries the whole message, and
+## it is the same wording match_result.gd uses on its own results screen, so a
+## client waiting mid-match and a client waiting between rounds are told the
+## same thing.
+##
+## Offline counts as host: there is nobody to coordinate with.
+func _refresh_play_again_state() -> void:
+	if play_again_button == null or not is_instance_valid(play_again_button):
+		return
+
+	var offline := not multiplayer.has_multiplayer_peer()
+	var can_restart := offline or NetworkManager.is_host()
+
+	play_again_button.visible = can_restart
+	if not can_restart:
+		host_status_label.visible = true
+		host_status_label.text = "Waiting for host..."
+		return
+
+	# Below the practice minimum, NetworkManager.start_practice_match() returns
+	# silently. An enabled button that does nothing at all is worse than a
+	# disabled one that says why.
+	var enough := offline or NetworkManager.players.size() >= NetworkManager.MIN_PRACTICE_PLAYERS
+	play_again_button.disabled = not enough
+	host_status_label.visible = not enough
+	host_status_label.text = "" if enough else "Not enough players to restart."
+
+
+## Restarts the round for EVERYONE, not just the host who pressed it -
+## NetworkManager broadcasts the arena reload, so there is no scene change to
+## make here. Doing both would load the arena twice on this machine.
+func _on_play_again_pressed() -> void:
+	settings_popup.visible = false
+	# The reload takes a few frames to come back around; one press only, or a
+	# second one lands while the first is still in flight.
+	play_again_button.disabled = true
+
+	if not multiplayer.has_multiplayer_peer():
+		LoadingScreen.reload_scene()
+		return
+
+	NetworkManager.restart_round()
 
 
 ## The only way out of a match once it's started - the title screen's own Exit
@@ -611,19 +675,62 @@ func _drop_panel_connections() -> void:
 ## for the rest of the burn timer before declaring the win. The rescue
 ## mechanic's drama is unaffected - it's exactly preserved whenever at least
 ## one Tubig is still NORMAL and the round has to keep going for them.
+## Every Tubig body that is actually still in the match, right now.
+##
+## Reads the group directly rather than trusting the cached _tubig_players,
+## and that distinction is the whole fix for "the round never ends once the
+## Tubig side empties out". Two separate lags were stacking up:
+##
+##   1. _tubig_players is only rewritten by _refresh_team_state, so anything
+##      calling _check_for_sili_win in between reads the roster as it was.
+##   2. queue_free() does not remove a node until the END of the frame, so
+##      even a refresh that runs in the same frame as a departure still finds
+##      the departing body sitting in the group, alive and NORMAL.
+##
+## _on_player_left defers a refresh and then the check, which looks like it
+## sequences those correctly - but the refresh still lands before the engine
+## has actually deleted anything. The result was a check that ran exactly one
+## departure behind: with two Tubigs leaving, the first check saw both, the
+## second saw the one that had just left, and no third check ever happened
+## because there were no bodies left to fire burned/died. The round then ran
+## its full clock out with nobody in it.
+##
+## is_queued_for_deletion() is what closes that window: a body already marked
+## for removal is not somebody who can still perform a rescue, whether or not
+## the engine has got round to freeing it.
+func _live_tubig_bodies() -> Array:
+	var live: Array = []
+	if not is_inside_tree():
+		return live
+	for tubig in get_tree().get_nodes_in_group("tubig"):
+		if not is_instance_valid(tubig):
+			continue
+		if tubig.is_queued_for_deletion():
+			continue
+		live.append(tubig)
+	return live
+
+
 func _check_for_sili_win() -> void:
 	if not multiplayer.is_server():
 		return
-	for tubig in _tubig_players:
-		if not is_instance_valid(tubig):
-			continue
+	# Nothing to decide before the round starts. end_match() refuses while
+	# is_running is false anyway, so this only keeps an empty pregame roster
+	# from looking like a Sili win on the way past.
+	if not MatchManager.is_running:
+		return
+
+	var live := _live_tubig_bodies()
+	for tubig in live:
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
-		print("[match-end-debug] _check_for_sili_win: %s state=%s incapacitated=%s" % [
-			tubig.name, (heat.state if heat else "no HeatStatus"),
-			(heat.is_incapacitated() if heat else "n/a")])
 		if heat and not heat.is_incapacitated():
 			return  # someone is still free to attempt a rescue
-	print("[match-end-debug] _check_for_sili_win: everyone incapacitated, calling end_match(true)")
+
+	# An EMPTY list ends the round too, and it reaches this line the same way
+	# "everyone is burning" does: the loop simply finds nobody who could still
+	# act. Nobody left to catch is the same verdict as nobody left standing -
+	# there is no play remaining either way - so it is deliberately not a
+	# special case with its own branch.
 	MatchManager.end_match(true)
 
 

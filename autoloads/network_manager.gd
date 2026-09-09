@@ -250,6 +250,39 @@ func start_practice_match() -> void:
 	_launch_round(peer_ids[0])
 
 
+## Host-only. Replays the CURRENT round: same players, same Sili, same map,
+## from the top. Used by the in-match settings panel's "Play Again".
+##
+## Deliberately NOT start_next_round(). That advances the series rotation and
+## hands the Sili to the next player, which is correct at the end of a round
+## that was actually played out and wrong for one abandoned half-way: it would
+## burn a turn nobody got to play, and the standings would come up a result
+## short with nothing to explain why. Re-running the same round leaves
+## SeriesManager exactly as it was.
+##
+## Roles are rebuilt rather than reused, because _launch_round regenerates them
+## from `players` - so anyone who joined or left since the round started is
+## accounted for automatically.
+func restart_round() -> void:
+	if not is_host() or players.size() < MIN_PRACTICE_PLAYERS:
+		return
+
+	# Whoever is Sili right now keeps the role. Falls back to the series'
+	# nominated Sili and then to the host, so this can never launch a round
+	# with nobody hunting.
+	var sili_id := 0
+	for id in roles.keys():
+		if roles[id] == "sili" and players.has(id):
+			sili_id = id
+			break
+	if sili_id == 0 and SeriesManager.is_active:
+		sili_id = SeriesManager.current_sili()
+	if sili_id == 0 or not players.has(sili_id):
+		sili_id = 1
+
+	_launch_round(sili_id)
+
+
 func _launch_round(sili_id: int) -> void:
 	roles.clear()
 	for id in players.keys():

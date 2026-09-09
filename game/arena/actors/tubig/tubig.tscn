@@ -1,10 +1,10 @@
-[gd_scene format=3 uid="uid://dtubig0001aa"]
+[gd_scene format=3 uid="uid://cmyvrk3yt5706"]
 
-[ext_resource type="Script" uid="uid://nwkc1bd20hgu" path="res://game/arena/actors/tubig/tubig.gd" id="1_g2els"]
+[ext_resource type="Script" path="res://game/arena/actors/tubig/tubig.gd" id="1_g2els"]
 [ext_resource type="Texture2D" uid="uid://cgc6pnpymu42o" path="res://game/assets/art/characters/16x16 Tubig.png" id="2_qd4cw"]
 [ext_resource type="Texture2D" uid="uid://b77txg5qm6nhj" path="res://game/assets/art/ui/heart.png" id="4_154gd"]
 [ext_resource type="Texture2D" uid="uid://dtvw0tpx85yol" path="res://game/assets/art/ui/stamina.png" id="5_8tch1"]
-[ext_resource type="Script" uid="uid://duetnyqgviwey" path="res://game/arena/actors/tubig/heat_status.gd" id="5_heat0"]
+[ext_resource type="Script" path="res://game/arena/actors/tubig/heat_status.gd" id="5_heat0"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_qd4cw"]
 atlas = ExtResource("2_qd4cw")
@@ -646,6 +646,10 @@ corner_radius_bottom_left = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_resc0"]
 bg_color = Color(0.28627452, 0.6392157, 0.9019608, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_tubig_move"]
 properties/0/path = NodePath(".:position")
@@ -663,6 +667,9 @@ properties/3/replication_mode = 1
 properties/4/path = NodePath(".:is_concealed")
 properties/4/spawn = true
 properties/4/replication_mode = 1
+properties/5/path = NodePath(".:tunnel_uses_left")
+properties/5/spawn = true
+properties/5/replication_mode = 1
 
 [sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_tubig_heat"]
 properties/0/path = NodePath(".:state")
@@ -671,12 +678,15 @@ properties/0/replication_mode = 1
 properties/1/path = NodePath(".:lives_left")
 properties/1/spawn = true
 properties/1/replication_mode = 1
-properties/2/path = NodePath(".:burn_seconds_left")
+properties/2/path = NodePath(".:is_immune")
 properties/2/spawn = true
-properties/2/replication_mode = 2
-properties/3/path = NodePath(".:is_immune")
+properties/2/replication_mode = 1
+properties/3/path = NodePath(".:burn_seconds_left")
 properties/3/spawn = true
 properties/3/replication_mode = 1
+properties/4/path = NodePath(".:struggle_bonus")
+properties/4/spawn = true
+properties/4/replication_mode = 1
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ia001"]
 radius = 13.0
@@ -709,8 +719,6 @@ corner_detail = 20
 
 [node name="player" type="CharacterBody2D" unique_id=248945563]
 z_index = 20
-collision_layer = 2
-collision_mask = 1
 script = ExtResource("1_g2els")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=2022279106]
@@ -723,15 +731,15 @@ position = Vector2(0, 4)
 shape = SubResource("RectangleShape2D_3sajy")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1241409087]
-zoom = Vector2(3, 3)
+zoom = Vector2(2, 2)
 position_smoothing_enabled = true
 
 [node name="RescueIndicator" type="ProgressBar" parent="." unique_id=694303160]
-visible = false
+z_index = 22
 offset_left = -24.0
 offset_top = -46.0
 offset_right = 24.0
-offset_bottom = -19.0
+offset_bottom = -34.0
 theme_override_styles/background = SubResource("StyleBoxFlat_track0")
 theme_override_styles/fill = SubResource("StyleBoxFlat_resc0")
 show_percentage = false
@@ -747,19 +755,16 @@ text = "6"
 horizontal_alignment = 1
 
 [node name="MPSync" type="MultiplayerSynchronizer" parent="." unique_id=1697077812]
-replication_interval = 0.05
 replication_config = SubResource("SceneReplicationConfig_tubig_move")
 
 [node name="HeatStatus" type="Node" parent="." unique_id=334707522]
 script = ExtResource("5_heat0")
 
 [node name="HeatSync" type="MultiplayerSynchronizer" parent="HeatStatus" unique_id=1788730828]
-replication_interval = 0.1
 replication_config = SubResource("SceneReplicationConfig_tubig_heat")
 
 [node name="InteractionArea" type="Area2D" parent="." unique_id=437840075]
 collision_layer = 0
-collision_mask = 2
 
 [node name="InteractionShape" type="CollisionShape2D" parent="InteractionArea" unique_id=258849601]
 position = Vector2(0, 3)
@@ -798,19 +803,6 @@ layout_mode = 2
 texture = ExtResource("4_154gd")
 expand_mode = 1
 stretch_mode = 5
-
-[node name="RescueBar" type="ProgressBar" parent="ui" unique_id=1127089978]
-visible = false
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 16.0
-offset_top = -88.0
-offset_right = 216.0
-offset_bottom = -68.0
-theme_override_styles/background = SubResource("StyleBoxFlat_track0")
-theme_override_styles/fill = SubResource("StyleBoxFlat_resc0")
-show_percentage = false
 
 [node name="StaminaBar" type="ProgressBar" parent="ui" unique_id=1217291081]
 anchors_preset = 2

@@ -13,17 +13,13 @@ const TUBIG_DEAD_COLOR := Color(0.42, 0.42, 0.44)
 const DEAD_ROW_TINT := Color(0.55, 0.55, 0.55, 0.65)
 ## Matches Tubig.HEART_SPENT_COLOR so the two heart displays stay in step.
 const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
-## Burn countdown next to a tagged teammate's dot - amber while the run is
-## still worth making, red once it probably isn't.
-const BURN_TIMER_COLOR := Color(1.0, 0.78, 0.30)
-const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.42, 0.36)
-## Escape (tunnel trip) counter on each row. Purple, matching the tunnel mouth
-## in tunnel.gd and the tagged-teammate guide line on the mini-map - the map
-## already teaches that purple means "the tunnel network", so the counter joins
-## that vocabulary instead of inventing a fifth colour.
-const ESCAPE_COLOR := Color(0.72, 0.52, 0.95)
-const ESCAPE_SPENT_COLOR := Color(0.45, 0.45, 0.48)
-const ESCAPE_GLYPH := "⇄"
+## Burn countdown. Amber while there is still time to cross the map, red once
+## the decision is basically made - the threshold is a readable signal, not
+## decoration, so it sits at the point where a rescue channel (6s) plus travel
+## stops being realistic.
+const BURN_TIMER_URGENT_AT := 10
+const BURN_TIMER_COLOR := Color(1.0, 0.76, 0.28)
+const BURN_TIMER_URGENT_COLOR := Color(1.0, 0.36, 0.32)
 
 @onready var match_label: Label = $HUD/MatchLabel
 @onready var team_panel: VBoxContainer = $HUD/TeamPanel
@@ -58,7 +54,6 @@ var map_instance: Node2D = null
 
 var _tubig_players: Array = []
 var _spectator: SpectatorView = null
-var _danger_music: DangerMusic = null
 
 ## Every signal this panel wired up on the LAST rebuild, so the next rebuild can
 ## unwire them. Without this the closures below outlive the rows they capture:
@@ -71,14 +66,7 @@ var _panel_connections: Array = []
 ## Only used if Map/SpawnPoints is missing or has no marker for a role - the
 ## real positions come from the SpawnPoint nodes you drag around in the editor.
 ## Keeping a fallback means deleting a marker mid-edit can't crash a match.
-##
-## These are OFFSETS from the map's own centre, not world coordinates. They
-## used to be raw coordinates clustered around (0, 0), which is only the middle
-## of the level if the level happens to be painted around the origin - this one
-## is painted a couple of thousand pixels out, so every fallback spawn landed
-## far off the tilemap in empty space. An offset from wherever the ground
-## actually is degrades to "somewhere in the middle of the map" for any map.
-const FALLBACK_SPAWN_OFFSETS: Array[Vector2] = [
+const FALLBACK_SPAWN_POINTS: Array[Vector2] = [
 	Vector2(-40, -40), Vector2(60, 40), Vector2(-60, 60),
 	Vector2(80, -60), Vector2(-90, -20), Vector2(30, 90),
 ]
@@ -91,15 +79,9 @@ func _ready() -> void:
 	tubig_spawner.spawn_function = _spawn_tubig
 	sili_spawner.spawned.connect(_on_player_spawned)
 	tubig_spawner.spawned.connect(_on_player_spawned)
-	# Despawn matters as much as spawn. Without it the team panel keeps a row
-	# for a player who is no longer in the match, with a status dot that will
-	# never change again.
-	sili_spawner.despawned.connect(_on_player_despawned)
-	tubig_spawner.despawned.connect(_on_player_despawned)
 
 	MatchManager.time_updated.connect(_on_time_updated)
 	MatchManager.match_ended.connect(_on_match_ended)
-	NetworkManager.player_left.connect(_on_player_left)
 
 	_setup_settings_popup()
 
@@ -110,15 +92,92 @@ func _ready() -> void:
 	# buildings...) ends up in the bake.
 	minimap.build_from_node(map_instance)
 
-	# Only the host decides who spawns where and starts the clock.
+	# Only the host decides who spawns where and starts the clock - but not
+	# until every peer has actually finished building this scene. See
+	# NetworkManager.report_arena_ready().
 	if NetworkManager.is_host():
 		SightingTracker.reset()
-		_spawn_all_players()
-		MatchManager.start_match()
+		NetworkManager.arena_peer_ready.connect(_on_arena_peer_ready)
+		NetworkManager.player_list_changed.connect(_try_launch_round)
+		get_tree().create_timer(READY_TIMEOUT).timeout.connect(_on_ready_timeout)
+
+	# Every peer reports, host included - the host's own arena is no more ready
+	# than anyone else's until this line runs.
+	NetworkManager.report_arena_ready()
+
+	if NetworkManager.is_host():
+		# Reports that arrived while this scene was still being built are
+		# already sitting in NetworkManager, so check them now rather than
+		# waiting for a signal that has been and gone.
+		_try_launch_round()
+	elif not multiplayer.has_multiplayer_peer():
+		# Offline (tools/ test harnesses): nothing to wait for.
+		_round_launched = true
 
 	# Everyone (not just the host) needs to see the team status panel, so
 	# this runs on every peer - only the win-check inside it is server-gated.
 	call_deferred("_refresh_team_state")
+
+
+## --- Load handshake -------------------------------------------------------
+##
+## The host used to spawn players and start the clock straight out of _ready().
+## That works with one fast client and fails with four laptops, because
+## _rpc_load_arena tells everyone to change scene at the same moment but the
+## host's own change is a local call - it is already running _ready() while the
+## clients are still loading theirs.
+##
+## MultiplayerSpawner replicates by PATH. A spawn command that lands on a peer
+## whose arena does not exist yet cannot resolve "../TubigContainer", so ENet
+## discards it and never retries: that client spends the whole round with
+## missing players. The pregame RPC from MatchManager.start_match() is lost the
+## same way, which is the "countdown never starts" version of the same bug.
+##
+## The window is wide, not marginal. minimap.build_from_node() above walks every
+## TileMapLayer and averages each tile's pixels, which on a big level takes real
+## time on a slow machine - so the host can comfortably finish spawning before a
+## client has begun.
+
+## Long enough to cover a slow laptop loading a big map, short enough that one
+## machine which crashed or pulled its Wi-Fi cannot hang the other four
+## indefinitely. On timeout the round starts anyway - a short-handed match is a
+## far better failure than a lobby frozen forever at a demo booth.
+const READY_TIMEOUT: float = 20.0
+
+var _round_launched: bool = false
+
+
+func _on_arena_peer_ready(_peer_id: int) -> void:
+	_try_launch_round()
+
+
+## Host only. Fires as soon as everyone in NetworkManager.players has checked
+## in - which for a solo host is immediately, so two-machine testing behaves
+## exactly as it did before. Also re-run when the player list changes, so a peer
+## dropping mid-load releases the wait instead of costing everyone the timeout.
+func _try_launch_round() -> void:
+	if _round_launched or not NetworkManager.is_host():
+		return
+	if not NetworkManager.all_peers_arena_ready():
+		return
+	_launch_round_now()
+
+
+func _on_ready_timeout() -> void:
+	if _round_launched or not NetworkManager.is_host():
+		return
+	var missing: Array = []
+	for peer_id in NetworkManager.players.keys():
+		if not NetworkManager.arena_ready_peers.has(peer_id):
+			missing.append(peer_id)
+	push_warning("Arena: starting without %s - they never reported ready." % str(missing))
+	_launch_round_now()
+
+
+func _launch_round_now() -> void:
+	_round_launched = true
+	_spawn_all_players()
+	MatchManager.start_match()
 
 
 ## In-match settings panel - the same four rows as the main Settings screen,
@@ -175,36 +234,9 @@ func _spawn_all_players() -> void:
 func _spawn_position_for(role: String, index: int, container: Node2D) -> Vector2:
 	var markers := _markers_for(role)
 	if markers.is_empty():
-		var offset := FALLBACK_SPAWN_OFFSETS[index % FALLBACK_SPAWN_OFFSETS.size()]
-		return container.to_local(_map_centre() + offset)
+		return FALLBACK_SPAWN_POINTS[index % FALLBACK_SPAWN_POINTS.size()]
 	var marker: SpawnPoint = markers[index % markers.size()]
 	return container.to_local(marker.global_position)
-
-
-## Middle of the painted ground, in world space. Measured off the tilemap
-## layers themselves for the same reason the mini-map bakes from them: it is
-## the one description of where the level is that cannot drift from the level.
-func _map_centre() -> Vector2:
-	if map_instance == null:
-		return Vector2.ZERO
-
-	var bounds := Rect2()
-	var found := false
-	for node in map_instance.find_children("*", "TileMapLayer", true, false):
-		var layer := node as TileMapLayer
-		if layer == null:
-			continue
-		var used: Rect2i = layer.get_used_rect()
-		if used.size == Vector2i.ZERO:
-			continue
-		var tile_size: Vector2 = Vector2(layer.tile_set.tile_size) if layer.tile_set else Vector2(16, 16)
-		var top_left: Vector2 = layer.to_global(Vector2(used.position) * tile_size)
-		var bottom_right: Vector2 = layer.to_global(Vector2(used.end) * tile_size)
-		var layer_rect := Rect2(top_left, bottom_right - top_left)
-		bounds = layer_rect if not found else bounds.merge(layer_rect)
-		found = true
-
-	return bounds.get_center() if found else map_instance.global_position
 
 
 func _markers_for(role: String) -> Array:
@@ -267,69 +299,8 @@ func _on_player_spawned(_node: Node) -> void:
 	_refresh_team_state()
 
 
-## Deferred: this fires while the spawner is removing the node, so the node is
-## still in the tree and would still be counted by get_nodes_in_group().
-func _on_player_despawned(_node: Node) -> void:
-	call_deferred("_refresh_team_state")
-
-
-## Someone quit. Their character does NOT leave with them - the server spawned
-## it, so nothing on the network takes it away - and a body left standing there
-## is not just cosmetic:
-##
-##   - _check_for_sili_win reads it as a Tubig still on their feet, so the Sili
-##     can never win. The match then always runs the full clock out, which is
-##     the "it just hangs after someone leaves" symptom.
-##   - Nobody can control it, so it cannot be tagged into a state that would
-##     release the match either. It simply stands in the sand.
-##
-## Freeing it on the server despawns it everywhere, because MultiplayerSpawner
-## replicates the removal of anything it spawned.
-func _on_player_left(peer_id: int, display_name: String) -> void:
-	# NetworkManager outlives the arena, so this signal can arrive mid-teardown.
-	if not is_inside_tree():
-		return
-	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
-		return
-
-	var was_sili: bool = false
-	# Typed explicitly: an untyped array literal yields Variant elements, and
-	# get_node_or_null() on a Variant has no inferable return type.
-	var containers: Array[Node2D] = [sili_container, tubig_container]
-	for container in containers:
-		var body: Node = container.get_node_or_null("player_%d" % peer_id)
-		if body == null:
-			continue
-		was_sili = body.is_in_group("sili")
-		container.remove_child(body)
-		body.queue_free()
-
-	_refresh_team_state()
-
-	# A match with no Sili has nobody who can end it. Letting the clock run out
-	# gets to the same verdict three minutes later, having made four people
-	# stand around to watch it happen.
-	if was_sili and MatchManager.is_running:
-		MatchManager.broadcast_event(
-			"%s was the Sili - the round is over." % MatchManager.sili_name(display_name),
-			"warning")
-		MatchManager.end_match(false)
-		return
-
-	_check_for_sili_win()
-
-
 func _refresh_team_state() -> void:
-	# This used to be reachable only from the spawner's `spawned` signal, which
-	# can only fire while the arena is in the tree. It now also arrives from a
-	# DEFERRED despawn and from NetworkManager.player_left, and both of those
-	# can land after the arena has been pulled out of the tree - a player
-	# quitting during the scene change into the next round is enough. get_tree()
-	# is null at that point, so every read below would fail.
-	if not is_inside_tree():
-		return
-
-	var previous_players := _tubig_players
+	var previous_count := _tubig_players.size()
 	_tubig_players = get_tree().get_nodes_in_group("tubig")
 
 	for tubig in _tubig_players:
@@ -338,13 +309,9 @@ func _refresh_team_state() -> void:
 			heat.burned.connect(_check_for_sili_win)
 			heat.died.connect(_check_for_sili_win)
 
-	# Compares the actual roster, not just how big it is. The old test was
-	# `size() != previous_count`, which misses the case where one player leaves
-	# and another spawns before the next refresh: the count is unchanged, so
-	# the panel kept a row wired to a freed body and showed a departed player's
-	# name with a dot that would never update again. Cheap for a handful of
-	# rows, and correct no matter what order peers finish spawning in.
-	if _tubig_players != previous_players:
+	# Rebuilding is cheap for a handful of rows and keeps this correct no
+	# matter what order peers finish spawning in.
+	if _tubig_players.size() != previous_count:
 		_build_team_panel()
 	_configure_local_hud()
 
@@ -360,9 +327,6 @@ func _configure_local_hud() -> void:
 
 	minimap.configure(local_player, is_sili)
 	threat_vignette.track_player(local_player, not is_sili)
-	# Same signal, two senses: the vignette shows the Sili closing in, the
-	# sting lets you hear it. Both are Tubig-only and neither reveals direction.
-	_ensure_danger_music().track_player(local_player, not is_sili)
 
 	# Only a Tubig can be eliminated, so the Sili never needs one of these.
 	if not is_sili and local_player != null:
@@ -372,18 +336,6 @@ func _configure_local_hud() -> void:
 ## Created on demand and only once. _configure_local_hud runs again every time
 ## a peer finishes spawning, and a second SpectatorView would mean a second
 ## Camera2D quietly fighting the first for the viewport.
-## Created on demand and only once, for the same reason as the spectator:
-## _configure_local_hud runs again on every spawn, and a second DangerMusic
-## would mean two nodes racing to start and stop the same sting.
-func _ensure_danger_music() -> DangerMusic:
-	if _danger_music != null and is_instance_valid(_danger_music):
-		return _danger_music
-	_danger_music = DangerMusic.new()
-	_danger_music.name = "DangerMusic"
-	add_child(_danger_music)
-	return _danger_music
-
-
 func _ensure_spectator() -> SpectatorView:
 	if _spectator != null and is_instance_valid(_spectator):
 		return _spectator
@@ -445,25 +397,6 @@ func _build_team_panel() -> void:
 		dot.add_theme_stylebox_override("panel", dot_style)
 		row.add_child(dot)
 
-		# Seconds left before this teammate's burn goes permanent, sat right
-		# next to the status dot.
-		#
-		# The red dot said someone was tagged. It did not say whether a rescue
-		# was still possible, and the rescue channel alone eats six of the
-		# thirty seconds - so without the number, deciding whether to make the
-		# run across the map was a guess. With it, it's arithmetic.
-		#
-		# Fixed width and always present (blank when nobody is burning) so the
-		# name and hearts don't slide sideways every time a tag lands.
-		var burn_label := Label.new()
-		burn_label.custom_minimum_size = Vector2(26, 0)
-		burn_label.add_theme_font_size_override("font_size", 13)
-		burn_label.add_theme_color_override("font_color", BURN_TIMER_COLOR)
-		burn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		burn_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		burn_label.text = ""
-		row.add_child(burn_label)
-
 		# The ONLY place a player's name appears during a match. Names are
 		# deliberately never drawn above characters in-world: at a glance
 		# mid-chase you should be reading team colour and nothing else, so
@@ -476,19 +409,24 @@ func _build_team_panel() -> void:
 		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(name_label)
 
+		# The countdown a teammate needs in order to decide whether the run is
+		# worth making. Fixed width and always present (blank when nobody is
+		# burning) so the hearts beside it never shift sideways mid-match.
+		var timer_label := Label.new()
+		timer_label.custom_minimum_size = Vector2(34, 0)
+		timer_label.add_theme_font_size_override("font_size", 14)
+		timer_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		timer_label.add_theme_constant_override("outline_size", 4)
+		timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		timer_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(timer_label)
+
 		var hearts_row := HBoxContainer.new()
 		hearts_row.add_theme_constant_override("separation", 2)
 		row.add_child(hearts_row)
 
-		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
-
 		var heart_icons: Array = []
-		# Sized off the Tubig's own MAX_LIVES rather than a hardcoded 3, so
-		# retuning lives for a playtest can't leave the panel drawing three
-		# hearts for a player who has five. Falls back to 3 if HeatStatus
-		# somehow isn't there yet, which is the value the scene ships with.
-		var heart_count: int = heat.MAX_LIVES if heat != null else 3
-		for i in maxi(1, heart_count):
+		for i in 3:
 			var heart := TextureRect.new()
 			heart.custom_minimum_size = Vector2(14, 14)
 			heart.texture = HEART_TEXTURE
@@ -497,36 +435,7 @@ func _build_team_panel() -> void:
 			hearts_row.add_child(heart)
 			heart_icons.append(heart)
 
-		# Each Tubig's OWN escape budget, one number per row.
-		#
-		# This column exists because "are the escape counts shared?" was a
-		# question the HUD gave you no way to answer: the count only ever
-		# appeared in your own tunnel prompt, so if one player spent two trips
-		# there was nothing on screen to confirm that everybody else still had
-		# theirs. Four separate numbers side by side settle it at a glance, and
-		# they also make the resource readable as a team - you can see who can
-		# still cross the map to reach a burning ally and who is walking.
-		#
-		# Fed by the replicated tunnel_uses_left, so these are the real values
-		# from each owner's machine, not a local guess.
-		var escape_label := Label.new()
-		escape_label.custom_minimum_size = Vector2(34, 0)
-		escape_label.add_theme_font_size_override("font_size", 13)
-		escape_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		escape_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		escape_label.tooltip_text = "Escapes (tunnel trips) left"
-		row.add_child(escape_label)
-
-		var update_escapes := func(uses_left: int):
-			if not is_instance_valid(row) or not is_instance_valid(escape_label):
-				return
-			escape_label.text = "%s%d" % [ESCAPE_GLYPH, uses_left]
-			escape_label.add_theme_color_override("font_color",
-				ESCAPE_SPENT_COLOR if uses_left <= 0 else ESCAPE_COLOR)
-
-		if tubig.has_signal("escapes_changed"):
-			_track_connection(tubig, &"escapes_changed", update_escapes)
-			update_escapes.call(int(tubig.get("tunnel_uses_left")))
+		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
 
 		# Read straight off HeatStatus instead of caching a flag. GDScript
 		# lambdas capture by VALUE, so the previous version's shared
@@ -545,20 +454,19 @@ func _build_team_panel() -> void:
 				heart_icons[i].modulate = (
 					Color.WHITE if i < lives_remaining else HEART_SPENT_COLOR)
 
-		# Blank unless they are actually Burning. A DEAD player's last count
-		# would freeze at some arbitrary number and read as "still savable",
-		# which is the exact decision this label exists to get right.
-		var update_burn_timer := func(seconds_left: int):
-			if not is_instance_valid(row) or not is_instance_valid(burn_label):
+		var update_timer := func(seconds_left: int):
+			if not is_instance_valid(timer_label) or not is_instance_valid(tubig):
 				return
-			if heat and heat.is_burning() and seconds_left > 0:
-				burn_label.text = "%ds" % seconds_left
-				# Turns red under ten seconds - past the six-second channel
-				# plus travel, the run has usually stopped being worth it.
-				burn_label.add_theme_color_override("font_color",
-					BURN_TIMER_URGENT_COLOR if seconds_left <= 10 else BURN_TIMER_COLOR)
-			else:
-				burn_label.text = ""
+			# Only a BURNING player has a clock worth showing. A dead one has
+			# run out and a free one was never on it, and printing "0s" for
+			# either would read as "about to die" for someone who isn't.
+			if heat == null or not heat.is_burning():
+				timer_label.text = ""
+				return
+			timer_label.text = "%ds" % seconds_left
+			timer_label.add_theme_color_override("font_color",
+				BURN_TIMER_URGENT_COLOR if seconds_left <= BURN_TIMER_URGENT_AT
+				else BURN_TIMER_COLOR)
 
 		var update_dot := func(new_state):
 			if not is_instance_valid(row) or not is_instance_valid(tubig):
@@ -578,17 +486,14 @@ func _build_team_panel() -> void:
 					row.modulate = Color.WHITE
 			if heat:
 				update_hearts.call(heat.lives_left)
-				# A state flip (rescued, or timed out) has to clear the number
-				# immediately; waiting for the next burn_time_changed would
-				# leave a stale countdown next to a blue or grey dot.
-				update_burn_timer.call(heat.burn_seconds_left)
+				update_timer.call(heat.burn_seconds_left)
 		if heat:
 			_track_connection(heat, &"state_changed", update_dot)
 			_track_connection(heat, &"lives_changed", update_hearts)
-			_track_connection(heat, &"burn_time_changed", update_burn_timer)
+			_track_connection(heat, &"burn_time_changed", update_timer)
 			update_dot.call(heat.state)
 			update_hearts.call(heat.lives_left)
-			update_burn_timer.call(heat.burn_seconds_left)
+			update_timer.call(heat.burn_seconds_left)
 
 
 ## Instances the level the host chose and parks it under MapHolder.
@@ -615,20 +520,6 @@ func _load_map() -> void:
 	map_holder.add_child(map_instance)
 
 	spawn_points_root = map_instance.get_node_or_null("SpawnPoints")
-
-	# The contract asks for SpawnPoints as a direct child, but a map that
-	# buries it one level deeper is a placement mistake, not a reason to throw
-	# every player at the fallback coordinates - which is a silent failure that
-	# looks like "the spawns don't work" rather than like a broken map. Search
-	# the whole subtree before giving up, and say so loudly enough to get fixed.
-	if spawn_points_root == null:
-		var found := map_instance.find_children("SpawnPoints", "Node2D", true, false)
-		if not found.is_empty():
-			spawn_points_root = found[0]
-			push_warning(
-				"Arena: map '%s' has SpawnPoints at '%s' instead of the map root. Using it anyway - see the contract in map_registry.gd." % [
-					map_id, map_instance.get_path_to(spawn_points_root)])
-
 	if spawn_points_root == null:
 		push_error("Arena: map '%s' has no SpawnPoints - see the contract in map_registry.gd." % map_id)
 
@@ -648,47 +539,24 @@ func _drop_panel_connections() -> void:
 	_panel_connections.clear()
 
 
-## The Sili wins once no Tubig can still be rescued.
+## The Sili wins only when every Tubig is DEAD - permanently out.
 ##
-## Waiting for every Tubig to be DEAD was too slow at the end. A burn is only
-## temporary because a TEAMMATE can come and undo it, and a teammate who is
-## themselves burning or dead cannot: heat_status.gd's request_cool_fully
-## rejects an incapacitated rescuer, and rejects rescuing yourself. So the
-## moment the last free Tubig is tagged, every burn still running is already
-## decided - the players just sat and watched the burn clock tick down for
-## thirty seconds before the game agreed with them.
-##
-## The condition is therefore "nobody is in NORMAL state", not "everybody is
-## DEAD". That still protects the case the burn window exists for: as long as
-## one Tubig is on their feet, the match keeps running and the rescue is live,
-## however many teammates are burning.
+## This used to end the match as soon as nobody was in the NORMAL state, which
+## counted a burning player as already beaten. Burning is temporary by design:
+## they are rooted, but a teammate has fifteen seconds to reach them. Ending
+## there threw away the most dramatic moment the game has - four burning
+## players and one rescue channel running - and made the rescue mechanic
+## meaningless exactly when it mattered most. Now a burn has to actually time
+## out for it to count.
 func _check_for_sili_win() -> void:
-	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+	if not multiplayer.is_server():
 		return
-	if _tubig_players.is_empty():
-		return  # nothing spawned yet; nothing to decide
-
-	var free_tubigs := 0
-	var doomed_burns := 0
 	for tubig in _tubig_players:
 		if not is_instance_valid(tubig):
 			continue
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
-		if heat == null or heat.is_dead():
-			continue
-		if heat.is_burning():
-			doomed_burns += 1
-		else:
-			free_tubigs += 1
-
-	if free_tubigs > 0:
-		return  # someone is still up, so a rescue is still possible
-
-	# Says WHY the match ended here rather than at the buzzer, so the last
-	# player tagged doesn't read it as the clock being cut short.
-	if doomed_burns > 0:
-		MatchManager.broadcast_event(
-			"No Tubig left standing - the burns can't be undone.", "warning")
+		if heat and not heat.is_dead():
+			return  # someone is still free, or still savable
 	MatchManager.end_match(true)
 
 

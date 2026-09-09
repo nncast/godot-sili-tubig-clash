@@ -636,6 +636,7 @@ zoom = Vector2(3, 3)
 position_smoothing_enabled = true
 
 [node name="MPSync" type="MultiplayerSynchronizer" parent="." unique_id=36922691]
+replication_interval = 0.05
 replication_config = SubResource("SceneReplicationConfig_sili_move")
 
 [node name="TagHitbox" type="Area2D" parent="." unique_id=378448542]

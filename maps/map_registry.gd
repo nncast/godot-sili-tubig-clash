@@ -18,15 +18,10 @@ extends RefCounted
 ##      silent footsteps on that surface, with no error to tell you why.
 ##   3. Overhead layers are named "over" (in a map) or "top" (in a prop scene
 ##      under game/props, where it is paired with a "bottom"), at z_index 21,
-##      with canopy_fade.gd attached. The half of a prop that the player walks
-##      IN FRONT of goes in "bottom" at the default z_index, and must not be
-##      duplicated into "top" - a cell painted in both layers draws twice.
-##
-##      fade_mode follows from who OWNS the layer, not from how it is painted.
-##      A prop owns its "top" outright, so WHOLE (fade the layer) is both
-##      correct and free. Only a map-wide "over" holding several unrelated
-##      canopies in one CanvasItem needs a masked mode, because there fading the
-##      layer would lift every tree on the map at once.
+##      with canopy_fade.gd attached and a fade_mode suited to how that layer is
+##      painted. The half of a prop that the player walks IN FRONT of goes in
+##      "bottom" at the default z_index, and must not be duplicated into "top" -
+##      a cell painted in both layers draws twice.
 ##   4. A SpawnPoints child holding at least one "sili" marker and at least
 ##      four "tubig" markers.
 ##   5. NO player containers. Those belong to the shell - see the comment on

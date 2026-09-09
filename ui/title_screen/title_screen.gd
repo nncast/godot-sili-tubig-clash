@@ -1,5 +1,10 @@
 extends Control
 
+## Feedback colours. These track STATE rather than styling, so they belong here
+## and not in ui_theme.tres.
+const ERROR_COLOR := Color(1.0, 0.45, 0.40)
+const INFO_COLOR := Color(0.80, 0.82, 0.86)
+
 @onready var name_edit: LineEdit = $VBox/NameRow/NameEdit
 @onready var host_button: Button = $VBox/HostButton
 @onready var join_button: Button = $VBox/JoinButton
@@ -17,12 +22,19 @@ extends Control
 @onready var exit_panel: Control = $ExitPanel
 
 @onready var code_edit: LineEdit = $JoinPanel/Panel/Margin/VBox/CodeEdit
+## Anything that happens WHILE the join modal is open reports here, not to
+## StatusLabel.
+##
+## StatusLabel is the last child of $VBox - the same container as the Host/Join/
+## Settings/Exit buttons. The join modal covers that column with a dim plate, so
+## a "no lobby found" written to StatusLabel was being drawn behind the dim, in
+## the button stack, underneath the very dialog the player was looking at. The
+## message about the code you just typed has to appear next to the field you
+## typed it into.
+@onready var join_status: Label = $JoinPanel/Panel/Margin/VBox/JoinStatus
 @onready var join_confirm_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinConfirmButton
 @onready var join_cancel_button: Button = $JoinPanel/Panel/Margin/VBox/ButtonsRow/JoinCancelButton
 
-var _leaderboard_panel: Control = null
-
-@onready var leaderboard_button: Button = $LeaderboardButton
 @onready var how_to_panel: Control = $HowToPanel
 @onready var how_to_body: RichTextLabel = $HowToPanel/Panel/Margin/VBox/Body
 @onready var how_to_close_button: Button = $HowToPanel/Panel/Margin/VBox/CloseButton
@@ -34,6 +46,7 @@ func _ready() -> void:
 	how_to_panel.visible = false
 	exit_panel.visible = false
 	status_label.text = ""
+	join_status.text = ""
 
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
@@ -49,8 +62,6 @@ func _ready() -> void:
 	$ExitPanel/Panel/Margin/VBox/ButtonsRow/ExitConfirmButton.pressed.connect(_on_exit_confirmed)
 	$ExitPanel/Panel/Margin/VBox/ButtonsRow/ExitCancelButton.pressed.connect(_on_exit_cancel_pressed)
 
-	_build_leaderboard()
-
 	NetworkManager.player_list_changed.connect(_on_player_list_changed)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	NetworkManager.code_lookup_failed.connect(_on_code_lookup_failed)
@@ -63,6 +74,7 @@ func _on_host_pressed() -> void:
 			status_label.text = "Port %d is already in use. Close any other copy of the game and try again." % NetworkManager.GAME_PORT
 		else:
 			status_label.text = "Couldn't host (error %s)." % err
+		status_label.add_theme_color_override("font_color", ERROR_COLOR)
 		return
 	get_tree().change_scene_to_file("res://ui/lobby/lobby.tscn")
 
@@ -70,6 +82,7 @@ func _on_host_pressed() -> void:
 func _on_join_pressed() -> void:
 	_close_all_panels()
 	status_label.text = ""
+	_set_join_status("", INFO_COLOR)
 	join_panel.visible = true
 	code_edit.text = ""
 	code_edit.grab_focus()
@@ -78,8 +91,24 @@ func _on_join_pressed() -> void:
 
 func _on_join_cancel_pressed() -> void:
 	join_panel.visible = false
+	_set_join_status("", INFO_COLOR)
 	join_button.grab_focus()
 	join_confirm_button.disabled = false
+
+
+## Routes to whichever surface the player can actually see. A join attempt can
+## outlive its dialog - the discovery lookup runs for five seconds and the
+## player may cancel partway through - and a failure written to a hidden panel
+## would be silently swallowed. If the modal is gone, the title screen's own
+## status line takes the message instead.
+func _set_join_status(message: String, color: Color) -> void:
+	if join_panel.visible:
+		join_status.text = message
+		join_status.add_theme_color_override("font_color", color)
+		status_label.text = ""
+	else:
+		status_label.text = message
+		status_label.add_theme_color_override("font_color", color)
 
 
 ## Accepts either a 4-digit lobby code (LAN broadcast lookup) or the host's IP
@@ -92,16 +121,17 @@ func _on_join_confirm_pressed() -> void:
 	var entry := code_edit.text.strip_edges()
 
 	if _looks_like_ip(entry):
-		status_label.text = "Connecting to %s..." % entry
+		_set_join_status("Connecting to %s..." % entry, INFO_COLOR)
 		join_confirm_button.disabled = true
 		NetworkManager.join_by_ip(entry, _resolved_name())
 		return
 
 	if entry.length() != 4 or not entry.is_valid_int():
-		status_label.text = "Enter the 4-digit lobby code, or the host's IP address."
+		_set_join_status("Enter the 4-digit lobby code, or the host's IP address.", ERROR_COLOR)
+		code_edit.grab_focus()
 		return
 
-	status_label.text = "Looking for lobby %s..." % entry
+	_set_join_status("Looking for lobby %s..." % entry, INFO_COLOR)
 	join_confirm_button.disabled = true
 	NetworkManager.join_by_code(entry, _resolved_name())
 
@@ -113,12 +143,16 @@ func _on_player_list_changed() -> void:
 
 
 func _on_connection_failed() -> void:
-	status_label.text = "Couldn't reach the host. Check both devices are on the same Wi-Fi and that the host's firewall allows the game."
+	_set_join_status(
+		"Couldn't reach the host.\nCheck you're on the same Wi-Fi, and that the host's firewall allows the game.",
+		ERROR_COLOR)
 	join_confirm_button.disabled = false
 
 
 func _on_code_lookup_failed() -> void:
-	status_label.text = "No lobby found with that code. If you're on a phone hotspot, type the host's IP address instead (shown on their lobby screen)."
+	_set_join_status(
+		"No lobby found with that code.\nOn a phone hotspot, type the host's IP instead - it's on their lobby screen.",
+		ERROR_COLOR)
 	join_confirm_button.disabled = false
 
 
@@ -181,26 +215,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif exit_panel.visible:
 		_on_exit_cancel_pressed()
 		get_viewport().set_input_as_handled()
-	elif _leaderboard_panel != null and _leaderboard_panel.visible:
-		_leaderboard_panel.close()
-		get_viewport().set_input_as_handled()
-
-
-## The BUTTON lives in title_screen.tscn - it is a corner icon, positioned and
-## given its trophy art there, which is a layout decision and belongs in the
-## scene. Only the panel is built here, for the same reason match_result.gd
-## builds its own: the contents are a variable-length table driven by saved
-## data, with very little worth laying out by hand.
-func _build_leaderboard() -> void:
-	_leaderboard_panel = load("res://ui/leaderboard/leaderboard_panel.gd").new()
-	_leaderboard_panel.name = "LeaderboardPanel"
-	add_child(_leaderboard_panel)
-	leaderboard_button.pressed.connect(_on_leaderboard_pressed)
-
-
-func _on_leaderboard_pressed() -> void:
-	_close_all_panels()
-	_leaderboard_panel.open()
 
 
 func _on_settings_pressed() -> void:
@@ -215,7 +229,6 @@ func _resolved_name() -> String:
 ## Helper to close all panels at once
 func _close_all_panels() -> void:
 	join_panel.visible = false
+	join_status.text = ""
 	how_to_panel.visible = false
 	exit_panel.visible = false
-	if _leaderboard_panel != null:
-		_leaderboard_panel.close()

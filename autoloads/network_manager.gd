@@ -46,9 +46,7 @@ signal match_starting
 signal lobby_code_ready(code: String)
 signal code_lookup_failed
 signal discovery_unavailable  # host couldn't open the discovery port
-## Someone dropped out. Carries the name because by the time listeners run, the
-## peer is already out of `players` and there is nothing left to look it up by.
-signal player_left(peer_id: int, display_name: String)
+signal arena_peer_ready(peer_id: int)  # a peer finished building the arena scene
 
 var players: Dictionary = {}  # peer_id (int) -> display name (String)
 var roles: Dictionary = {}    # peer_id (int) -> "sili" or "tubig"
@@ -58,6 +56,10 @@ var discovery_active: bool = false  # false => clients must join by IP
 
 var _discovery_socket: PacketPeerUDP = null
 var _is_discovery_host: bool = false
+
+## peer_id -> true, for peers whose arena scene has finished loading. Host-side
+## only; see report_arena_ready() for why this lives on the autoload.
+var arena_ready_peers: Dictionary = {}
 
 
 func _ready() -> void:
@@ -225,8 +227,57 @@ func _launch_round(sili_id: int) -> void:
 		roles[id] = "sili" if id == sili_id else "tubig"
 
 	_stop_discovery_host()  # match is starting, stop advertising the lobby
+	# Cleared BEFORE the load command goes out, so a report from the round that
+	# just finished cannot be mistaken for a report about the round starting now.
+	arena_ready_peers.clear()
 	_rpc_assign_roles.rpc(roles)
 	_rpc_load_arena.rpc(current_map_id)
+
+
+## --- Arena load handshake -------------------------------------------------
+##
+## Called by every peer from arena.gd once its own arena scene is fully built.
+## The host holds the round until it has heard from everyone.
+##
+## This lives on the autoload rather than on the arena for one specific reason:
+## change_scene_to_file() is deferred to the end of the frame, so for a frame or
+## two after the load command the HOST has no arena node either. An RPC
+## addressed to a node that does not exist yet is discarded by Godot with no
+## retry - so a client that loaded unusually fast could report in, be silently
+## dropped, and then be waited on until the timeout expired. Autoloads exist on
+## every peer for the whole session, so there is no window where the report has
+## nowhere to land, and a report that arrives before the host's arena is built
+## is simply waiting in this dictionary when the arena asks.
+func report_arena_ready() -> void:
+	if not multiplayer.has_multiplayer_peer():
+		return
+	if multiplayer.is_server():
+		_record_arena_ready(1)
+	else:
+		_rpc_arena_ready.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _rpc_arena_ready() -> void:
+	if not is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	_record_arena_ready(1 if sender == 0 else sender)
+
+
+func _record_arena_ready(peer_id: int) -> void:
+	if arena_ready_peers.has(peer_id):
+		return
+	arena_ready_peers[peer_id] = true
+	arena_peer_ready.emit(peer_id)
+
+
+## True once every player the host thinks is in the match has checked in.
+func all_peers_arena_ready() -> bool:
+	for peer_id in players.keys():
+		if not arena_ready_peers.has(peer_id):
+			return false
+	return true
 
 
 # --- Direct connection (used internally once a code resolves to an IP) ---
@@ -320,57 +371,15 @@ func _on_peer_connected(_id: int) -> void:
 	pass  # wait for their register_player() RPC so we know their chosen name
 
 
-## Fires on EVERY peer, not just the host - Godot notifies all of them when
-## someone drops - so the feed line is emitted locally rather than broadcast.
-## Routing it through MatchManager.broadcast_event would send one copy per peer
-## and print the same departure four times on every screen.
 func _on_peer_disconnected(id: int) -> void:
-	if not players.has(id):
-		return
-
-	var who: String = players[id]
-	var was_sili: bool = roles.get(id, "") == "sili"
-	players.erase(id)
-	roles.erase(id)
-
-	if is_host():
-		_rpc_update_player_list.rpc(players)
-	player_list_changed.emit()
-
-	MatchManager.event_logged.emit("%s left the game" % (
-		MatchManager.sili_name(who) if was_sili else MatchManager.tubig_name(who)), "warning")
-	player_left.emit(id, who)
-
-
-## Whether the host could start another round right now.
-##
-## The lobby, the end-of-match overlay and start_practice_match() were each
-## deciding this for themselves, and the overlay's copy was simply missing -
-## it offered "Play Again" no matter how many people had left, then called a
-## function that refused and returned silently. The button appeared to do
-## nothing, which reads as the game having frozen.
-func can_start_another_round() -> bool:
-	if not is_host():
-		return false
-	if SeriesManager.is_active and not SeriesManager.series_complete():
-		# A series is balanced for a full lobby; losing anyone ends it rather
-		# than quietly playing the remaining rounds at the wrong size.
-		return players.size() == MATCH_SIZE
-	return players.size() >= MIN_PRACTICE_PLAYERS
-
-
-## Why can_start_another_round() said no, phrased for a player. Empty when it
-## said yes.
-func round_blocked_reason() -> String:
-	if not is_host():
-		return ""
-	if SeriesManager.is_active and not SeriesManager.series_complete():
-		if players.size() != MATCH_SIZE:
-			return "Series needs %d players - %d left." % [MATCH_SIZE, players.size()]
-		return ""
-	if players.size() < MIN_PRACTICE_PLAYERS:
-		return "Not enough players to start another round."
-	return ""
+	# Erased first: a peer that dropped mid-load will never report in, and
+	# leaving it here would make the others sit out the full load timeout.
+	arena_ready_peers.erase(id)
+	if players.has(id):
+		players.erase(id)
+		if is_host():
+			_rpc_update_player_list.rpc(players)
+		player_list_changed.emit()
 
 
 # --- Peer lifecycle (client side) ---
@@ -418,10 +427,4 @@ func _rpc_assign_roles(new_roles: Dictionary) -> void:
 func _rpc_load_arena(map_id: String) -> void:
 	current_map_id = map_id
 	match_starting.emit()
-	# Behind the curtain rather than a bare change_scene_to_file: the arena
-	# plus its map is a second or more of blocking work, and doing it raw left
-	# the lobby frozen on screen looking like a crash. The map is named as a
-	# preload so it comes off the worker thread here instead of blocking inside
-	# arena.gd's _load_map(), which runs during _ready() where nothing can
-	# yield. Deliberately not awaited - change_scene drives itself.
-	LoadingScreen.change_scene(ARENA_SCENE, [MapRegistry.scene_path(map_id)])
+	get_tree().change_scene_to_file(ARENA_SCENE)

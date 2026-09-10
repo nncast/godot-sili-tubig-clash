@@ -18,6 +18,12 @@ const FRICTION = 1200.0
 ## --- Tag ability ---
 @export var TAG_RETRY_COOLDOWN: float = 1.0  # local-only, just to avoid spamming the RPC every frame
 
+## How often the name tag re-tests canopy cover - see tubig.gd's identical
+## constant and _process() for the full reasoning. The Sili has no hiding-spot
+## concealment of its own, but it joins "player" for canopy_fade like everyone
+## else, so it needs the same per-viewer name check a Tubig gets.
+@export var NAME_CHECK_INTERVAL: float = 0.15
+
 signal stamina_changed(current_stamina: float, max_stamina: float)
 signal exhausted
 signal recovered_from_exhaustion
@@ -85,6 +91,19 @@ func _notification(what: int) -> void:
 			or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 		if Input.is_action_pressed("run"):
 			Input.action_release("run")
+
+
+## Runs on EVERY peer, unlike _physics_process below - see tubig.gd's copy of
+## this function for why the check has to run per-viewer rather than once on
+## the authority.
+var _name_check_accum: float = 0.0
+
+func _process(delta: float) -> void:
+	_name_check_accum += delta
+	if _name_check_accum < NAME_CHECK_INTERVAL:
+		return
+	_name_check_accum = 0.0
+	name_label.visible = not CanopyFade.hidden_from_local(get_tree(), global_position)
 
 
 func _physics_process(delta: float) -> void:

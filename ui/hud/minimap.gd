@@ -57,6 +57,11 @@ const TERRAIN_ALPHA := 0.7
 ## clipped the very edge of the frame shouldn't light up a dot before the
 ## player themselves would say they can see it.
 @export var SILI_VIEW_MARGIN: float = 0.08
+## How often canopy cover is re-tested, in seconds. Not per-frame: the test
+## walks every canopy layer on the map for every player, and cover changes at
+## walking pace, so re-asking sixty times a second buys nothing. Same
+## reasoning and roughly the same value as tubig.gd's SIGHTING_INTERVAL.
+@export var CANOPY_CHECK_INTERVAL: float = 0.15
 
 var _map_texture: ImageTexture = null
 var _world_rect: Rect2 = Rect2()
@@ -69,6 +74,11 @@ var _tubig_players: Array = []
 var _sili_player: Node2D = null
 var _refresh_accum: float = 0.0
 var _pulse_time: float = 0.0
+## instance_id -> true for every character currently under a canopy the local
+## player is not also under. Recomputed on CANOPY_CHECK_INTERVAL and read by
+## _draw, so the per-frame redraw stays a lookup rather than a map-wide scan.
+var _canopy_hidden: Dictionary = {}
+var _canopy_accum: float = 0.0
 
 # Baking caches - keyed so a tile atlas is only ever averaged once.
 var _color_cache: Dictionary = {}
@@ -281,7 +291,37 @@ func _process(delta: float) -> void:
 	if _refresh_accum >= ENTITY_REFRESH_INTERVAL:
 		_refresh_accum = 0.0
 		_refresh_entities()
+
+	_canopy_accum += delta
+	if _canopy_accum >= CANOPY_CHECK_INTERVAL:
+		_canopy_accum = 0.0
+		_refresh_canopy_cover()
+
 	queue_redraw()
+
+
+## Who is currently tucked under cover this screen's player cannot see into.
+##
+## The map is deliberately stricter than the screen here: a canopy hides you
+## from it even when someone standing outside your palm can make out your
+## sprite, because a dot on a map is readable from across the level and a
+## sprite at that distance is not. Sharing the cover cancels it - see
+## CanopyFade.conceals().
+func _refresh_canopy_cover() -> void:
+	_canopy_hidden.clear()
+	if not is_instance_valid(_local_player):
+		return
+
+	var viewpoint := _local_player.global_position
+	for character in _tubig_players + [_sili_player]:
+		if not is_instance_valid(character) or character == _local_player:
+			continue
+		if CanopyFade.conceals(get_tree(), character.global_position, viewpoint):
+			_canopy_hidden[character.get_instance_id()] = true
+
+
+func _under_hidden_canopy(character: Node) -> bool:
+	return _canopy_hidden.has(character.get_instance_id())
 
 
 func _refresh_entities() -> void:
@@ -355,6 +395,9 @@ func _draw_for_tubig() -> void:
 		# marker (as a hollow ring) so you know the concealment actually took.
 		if concealed and not is_self:
 			continue
+		# Same rule for a teammate under a palm you are not under yourself.
+		if not is_self and _under_hidden_canopy(tubig):
+			continue
 
 		var heat = tubig.get_node_or_null("HeatStatus")
 		var point := _map_point(tubig.global_position)
@@ -381,7 +424,12 @@ func _draw_for_tubig() -> void:
 	# Drawn after every dot so a guide is never buried under a teammate marker.
 	_draw_tagged_guides()
 
-	# Red dot only while a teammate genuinely has eyes on the Sili.
+	# Red dot only while a teammate genuinely has eyes on the Sili - and never
+	# while the Sili is under cover this player is not sharing. A Sili who has
+	# stepped under a palm has broken line of sight for map purposes even if
+	# somebody across the level still has them technically on screen.
+	if is_instance_valid(_sili_player) and _under_hidden_canopy(_sili_player):
+		return
 	if SightingTracker.is_sili_spotted and is_instance_valid(_sili_player):
 		var sili_point := _map_point(_sili_player.global_position)
 		draw_circle(sili_point, DOT_RADIUS + 0.5, COLOR_SILI)
@@ -462,6 +510,10 @@ func _draw_for_sili() -> void:
 			# spot should not be undone by merely walking past with a camera.
 			var concealed: bool = tubig.get("is_concealed") == true
 			if concealed or camera == null or not _point_in_view(camera, tubig.global_position):
+				continue
+			# Under a palm the Sili is not under: on screen at this range, but
+			# not on the map. Walking under it with them cancels this.
+			if _under_hidden_canopy(tubig):
 				continue
 
 		var point := _map_point(tubig.global_position)

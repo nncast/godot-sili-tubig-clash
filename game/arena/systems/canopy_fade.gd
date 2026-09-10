@@ -1,4 +1,5 @@
 extends TileMapLayer
+class_name CanopyFade
 
 ## Attach to the overhead TileMapLayers - the tree canopies, umbrellas, fountain
 ## tops and building roofs drawn at z_index 21, above the players. Maps name
@@ -66,16 +67,17 @@ enum FadeMode {
 ## Alpha while you are underneath. Not 0 - a faint canopy reads as "you are
 ## under something", where clearing it fully just looks like the art vanished.
 ##
-## Lowered from 0.3: at that value the palm fronds were still dark enough to
-## lose a 24px character against them, which defeats the point of fading at
-## all. 0.15 keeps the silhouette of the tree readable while letting you
-## actually see yourself run underneath it.
+## Lowered from 0.3 to 0.15 and now to 0.10: the fronds kept enough weight at
+## 0.15 to swallow a 24px character standing under them, which defeats the
+## point of fading at all. 0.10 leaves the tree's silhouette legible - you can
+## still tell you are under cover - while letting you actually read yourself
+## and anyone beside you.
 ##
 ## Written through a setter rather than only in _ready() so dragging this in
 ## the inspector updates the shader on the spot - the previous version pushed
 ## the value once at startup, so tuning it meant restarting the scene every
 ## time.
-@export var faded_alpha: float = 0.15:
+@export var faded_alpha: float = 0.10:
 	set(value):
 		faded_alpha = clampf(value, 0.0, 1.0)
 		if _material != null:
@@ -106,6 +108,11 @@ enum FadeMode {
 ## would otherwise walk the entire map on the frame you step under it.
 const MAX_FLOOD_CELLS := 4096
 
+## Every canopy layer joins this, so the stealth helpers at the bottom of this
+## file can ask "what is over this spot" without knowing where in the scene
+## any particular palm, umbrella or roof happens to live.
+const GROUP := "canopy"
+
 var _blend: float = 0.0          # 0 = fully opaque, 1 = fully faded
 var _target_blend: float = 0.0
 var _local_player: Node2D = null
@@ -120,6 +127,11 @@ var _cached_is_blob: bool = false
 
 
 func _ready() -> void:
+	# Before the WHOLE early-out below: a WHOLE layer still hides whoever is
+	# standing under it, so it has to be findable by the stealth helpers even
+	# though it needs no shader.
+	add_to_group(GROUP)
+
 	# WHOLE needs no material at all. Skipping it here is not just tidiness:
 	# boracay instances forty-odd palms, and each one used to compile and hold
 	# its own ShaderMaterial to run a mask that only ever covered one tile.
@@ -276,16 +288,27 @@ func _refresh_local_player() -> void:
 		return
 
 
-## The painted cell covering the player, or null if they are in the open.
+## The painted cell covering the local player, or null if they are in the open.
+func _covering_cell() -> Variant:
+	if _local_player == null:
+		return null
+	return covering_cell_for(_local_player.global_position)
+
+
+## True when this canopy is over `global_pos` - the same test the fade itself
+## runs, so "the palm lifted for me" and "the palm hides me" can never
+## disagree about where its edges are.
+func covers_point(global_pos: Vector2) -> bool:
+	return covering_cell_for(global_pos) != null
+
+
+## The painted cell covering `global_pos`, or null if it is in the open.
 ##
 ## Returns the CLOSEST covering cell rather than the first one found, so the
 ## flood fill seeds inside the canopy the player is actually under when two
 ## different trees both have a cell within cover_radius.
-func _covering_cell() -> Variant:
-	if _local_player == null:
-		return null
-
-	var local_pos := to_local(_local_player.global_position)
+func covering_cell_for(global_pos: Vector2) -> Variant:
+	var local_pos := to_local(global_pos)
 	var origin := local_to_map(local_pos)
 	var best: Vector2i = Vector2i.ZERO
 	var best_distance := INF
@@ -303,3 +326,60 @@ func _covering_cell() -> Variant:
 				found = true
 
 	return best if found else null
+
+
+# --- Canopy stealth ----------------------------------------------------------
+#
+# A canopy hides whoever is under it, and it hides them from the MAP and from
+# the name tags rather than from the screen. Standing under a palm does not
+# make you invisible - anyone close enough still sees your sprite, and the
+# Sili can still walk into you and tag you - it takes you off the mini-map and
+# takes your name off your head.
+#
+# The exception is the whole point of the rule: a canopy that is lifted for
+# BOTH of you hides neither of you from the other. Two players under the same
+# palm are looking at each other through the same faded fronds, so the map has
+# to agree with what their eyes already report. Under DIFFERENT palms, or one
+# in the open and one under cover, the cover does its job.
+
+
+## Is `target_pos` hidden from someone standing at `observer_pos`?
+##
+## True only when some canopy covers the target and NO canopy covering the
+## target also covers the observer. Passing the same point for both always
+## returns false, which is what keeps a player's own marker on their own map.
+static func conceals(tree: SceneTree, target_pos: Vector2, observer_pos: Vector2) -> bool:
+	if tree == null:
+		return false
+
+	var covered := false
+	for node in tree.get_nodes_in_group(GROUP):
+		var layer := node as CanopyFade
+		if layer == null or not layer.covers_point(target_pos):
+			continue
+		if layer.covers_point(observer_pos):
+			return false  # shared cover - they can see each other for real
+		covered = true
+	return covered
+
+
+## The character this client controls, or null. Same scan the fade itself runs
+## to find who to lift for, exposed so callers that have to judge "can the
+## person AT THIS SCREEN see that" don't each reimplement it.
+static func local_viewer(tree: SceneTree) -> Node2D:
+	if tree == null:
+		return null
+	for node in tree.get_nodes_in_group("player"):
+		var character := node as Node2D
+		if character != null and character.is_multiplayer_authority():
+			return character
+	return null
+
+
+## Is `target_pos` hidden from this screen's own player? Answers false when
+## there is nobody local to hide from, so a spectator view hides nothing.
+static func hidden_from_local(tree: SceneTree, target_pos: Vector2) -> bool:
+	var viewer := local_viewer(tree)
+	if viewer == null:
+		return false
+	return conceals(tree, target_pos, viewer.global_position)

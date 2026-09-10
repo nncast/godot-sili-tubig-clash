@@ -63,6 +63,10 @@ const FRICTION = 1200.0
 ## --- Stealth ---
 @export var CONCEAL_SETTLE_TIME: float = 0.35  # how long you must hold still inside a hiding spot
 @export var CONCEALED_SPRITE_ALPHA: float = 0.55  # local-only feedback, not real invisibility
+## How often the name tag re-tests canopy cover. Same reasoning and value as
+## SIGHTING_INTERVAL below - cover changes at walking pace, so asking every
+## frame would walk every canopy on the map sixty times a second for nothing.
+@export var NAME_CHECK_INTERVAL: float = 0.15
 
 ## --- Sili spotting ---
 @export var SIGHTING_INTERVAL: float = 0.15  # how often we re-check if the Sili is on screen
@@ -210,6 +214,27 @@ func _on_concealment_changed(concealed: bool) -> void:
 		animated_sprite.modulate.a = CONCEALED_SPRITE_ALPHA if concealed else 1.0
 		if _hidden_label:
 			_hidden_label.visible = concealed
+
+
+## Runs on EVERY peer, for EVERY Tubig - unlike _physics_process below, which
+## only the authority runs for its own body. Whether a canopy hides a name tag
+## depends on where THIS SCREEN's own player is standing relative to whoever
+## the tag belongs to, so each viewer has to judge it independently rather
+## than the owner deciding it once for everybody.
+##
+## Canopy cover only - unlike is_concealed's hiding spots, which leave the name
+## up on purpose (see the _ready() comment on name_label). A palm is a
+## different promise: it already hides you from the map, so it should hide you
+## from a floating name the same way, or the label gives away exactly what the
+## canopy just hid.
+var _name_check_accum: float = 0.0
+
+func _process(delta: float) -> void:
+	_name_check_accum += delta
+	if _name_check_accum < NAME_CHECK_INTERVAL:
+		return
+	_name_check_accum = 0.0
+	name_label.visible = not CanopyFade.hidden_from_local(get_tree(), global_position)
 
 
 func _physics_process(delta: float) -> void:

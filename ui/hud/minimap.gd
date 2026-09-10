@@ -41,6 +41,11 @@ const GUIDE_GAP_LENGTH := 4.0
 const COLOR_BACKDROP := Color(0.05, 0.06, 0.09, 0.72)
 const COLOR_BORDER := Color(0.85, 0.88, 0.95, 0.35)
 const TRANSPARENT := Color(0, 0, 0, 0)
+## Terrain fades into the dark backdrop rather than being drawn full-strength,
+## so it reads as background context instead of competing with the saturated
+## team dots for attention. Alpha, not desaturation - the tiles keep their
+## real colour (sand tan, sea blue), just toned down under it.
+const TERRAIN_ALPHA := 0.7
 
 @export var DOT_RADIUS: float = 3.0
 @export var SELF_DOT_RADIUS: float = 4.0
@@ -297,7 +302,7 @@ func _draw() -> void:
 	_view_rect = _fitted_view_rect(frame)
 
 	if _map_texture:
-		draw_texture_rect(_map_texture, _view_rect, false)
+		draw_texture_rect(_map_texture, _view_rect, false, Color(1, 1, 1, TERRAIN_ALPHA))
 
 	draw_rect(frame, COLOR_BORDER, false, 1.0)
 

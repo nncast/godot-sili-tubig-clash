@@ -25,15 +25,17 @@ const AMBIENCE_OCEAN := "res://game/assets/audio/ambiance/Ambiance_Ocean_Praia_d
 ## load time - see load_looping_wav().
 const MUSIC_DANGER := "res://game/assets/audio/music/Danger_03.wav"
 
-## Gameplay sound effects, all synthesised by tools/generate_audio.py.
+## Gameplay sound effects - most synthesised by tools/generate_audio.py,
+## "sili-tag" and "tubig_rescue" team-recorded (see CALLOUTS.md for the same
+## recording notes applied to a plain sfx instead of a voice line).
 ## Loaded by name rather than preloaded individually so call sites read as
-## AudioManager.play_sfx("tag") instead of threading a constant through three
-## scripts. Anything missing from disk simply doesn't play - the game should
-## never crash over a sound.
+## AudioManager.play_sfx("spotted") instead of threading a constant through
+## three scripts. Anything missing from disk simply doesn't play - the game
+## should never crash over a sound.
 const SFX_DIR := "res://game/assets/audio/sfx"
 const SFX_NAMES: Array[String] = [
-	"tag", "burn_tick", "rescue_start", "rescue_complete", "tunnel",
-	"countdown", "countdown_go", "match_win", "match_lose",
+	"sili-tag", "tubig_rescue", "burn_tick", "rescue_start", "rescue_complete",
+	"tunnel", "countdown", "countdown_go", "match_win", "match_lose",
 	"eliminated", "spotted",
 	# Filipino voice callouts - see CALLOUTS below.
 	"callout_taya", "callout_anghang", "callout_save",

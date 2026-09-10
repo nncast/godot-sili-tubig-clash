@@ -41,6 +41,12 @@ const RUN_FPS := 10.0
 const SILI_SHEET := "res://game/assets/art/characters/16x16 Sili.png"
 const TUBIG_SHEET := "res://game/assets/art/characters/16x16 Tubig.png"
 
+## Loops under the runners for as long as the curtain is up. Looped in code
+## rather than via the .import setting: the .import's loop flag only takes
+## effect on a reimport, the same gotcha AudioManager.load_looping_wav works
+## around for its .wav loops.
+const LOADING_LOOP_SFX := "res://game/assets/audio/sfx/sili-sili-tubig-tubig_loading.ogg"
+
 ## Pixel art at 24px would be a smudge on a 1080p screen; 4x keeps it crisp
 ## because the project renders with nearest-neighbour filtering.
 const SPRITE_SCALE := 4.0
@@ -69,6 +75,7 @@ var _root: Control = null
 var _label: Label = null
 var _sili: AnimatedSprite2D = null
 var _tubig: AnimatedSprite2D = null
+var _loop_player: AudioStreamPlayer = null
 
 var _busy: bool = false
 var _run_offset: float = 0.0
@@ -208,9 +215,12 @@ func _set_visible(shown: bool) -> void:
 		_label.text = _base_text
 		_sili.play(&"run")
 		_tubig.play(&"run")
+		_play_loop_sfx()
 	else:
 		_sili.stop()
 		_tubig.stop()
+		if _loop_player:
+			_loop_player.stop()
 
 
 func _process(delta: float) -> void:
@@ -242,6 +252,11 @@ func _build() -> void:
 	# Start button underneath and fire a second round load mid-transition.
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_root)
+
+	_loop_player = AudioStreamPlayer.new()
+	_loop_player.name = "LoopSFX"
+	_loop_player.bus = "SFX"
+	add_child(_loop_player)
 
 	var dim := ColorRect.new()
 	dim.name = "Dim"
@@ -290,6 +305,21 @@ func _build() -> void:
 	_label.add_theme_font_size_override("font_size", 28)
 	_label.add_theme_color_override("font_color", TEXT_COLOR)
 	column.add_child(_label)
+
+
+## Missing-file-safe, like every other sfx in the game: a curtain with no
+## sound is a worse bug than a curtain with no jingle.
+func _play_loop_sfx() -> void:
+	if _loop_player == null or _loop_player.playing:
+		return
+	if not ResourceLoader.exists(LOADING_LOOP_SFX):
+		return
+	if _loop_player.stream == null:
+		var stream: AudioStream = load(LOADING_LOOP_SFX)
+		if stream is AudioStreamOggVorbis:
+			stream.loop = true
+		_loop_player.stream = stream
+	_loop_player.play()
 
 
 func _make_runner(sheet_path: String) -> AnimatedSprite2D:

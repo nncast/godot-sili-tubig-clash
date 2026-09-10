@@ -849,17 +849,29 @@ func _on_time_updated(time_remaining: float, _match_duration: float) -> void:
 
 func _on_match_ended(sili_won: bool) -> void:
 	match_label.text = "Sili wins!" if sili_won else "Tubig survives!"
-	_record_round_result()
+	_record_round_result(sili_won)
 
 
 ## Server only. Reads the final state of every Tubig off this machine's own
 ## copy of the world and hands it to SeriesManager, which owns the points.
 ##
-## "Out" means DEAD - a burning player at the final whistle was still in the
-## match and still savable, so they count as having survived it. Rescues are
-## not tallied here: SeriesManager already counted them one by one as they
-## were validated, which is the only way to know who performed each.
-func _record_round_result() -> void:
+## What counts as "out" depends on WHY the match ended:
+##   - Sili won: _check_for_sili_win only ever calls this when every remaining
+##     Tubig is BURNING or DEAD - nobody was left free to run a rescue. A
+##     player still mid-burn at that instant is not "still savable" the way
+##     the time-expiry case below is; the round ended precisely because no
+##     save was possible, so BURNING counts as caught here.
+##   - Tubig survived (time expired): a burning player at the buzzer genuinely
+##     might have been rescued a second later, so only DEAD (fully burned out)
+##     counts as out - anyone still standing, tagged or not, gets credit for
+##     lasting the match.
+## Without this split, a Sili who tags every Tubig and wins on the wipe check
+## (before anyone's burn timer actually expires) saw every Tubig scored as
+## "survived" and zero eliminations credited - a full wipe that paid nothing.
+##
+## Rescues are not tallied here: SeriesManager already counted them one by one
+## as they were validated, which is the only way to know who performed each.
+func _record_round_result(sili_won: bool) -> void:
 	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 		print("[SCORE-DEBUG] _record_round_result skipped - not server")
 		return
@@ -867,18 +879,23 @@ func _record_round_result() -> void:
 		print("[SCORE-DEBUG] _record_round_result skipped - SeriesManager not active (practice match)")
 		return  # practice match - nothing to score
 
+	# _live_tubig_bodies(), not the cached _tubig_players: the same staleness
+	# _check_for_sili_win was fixed for above applies here too - _tubig_players
+	# is only rewritten by _refresh_team_state, so a round that ends via a
+	# departure handled in the same frame (_on_player_left's deferred refresh
+	# hasn't necessarily run relative to this call) could otherwise score off
+	# a roster that no longer matches who is actually in the match.
 	var outcomes: Dictionary = {}
-	for tubig in _tubig_players:
-		if not is_instance_valid(tubig):
-			continue
+	for tubig in _live_tubig_bodies():
 		var peer_id := _peer_id_for(tubig)
 		if peer_id == 0:
 			continue
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
-		outcomes[peer_id] = "out" if (heat and heat.is_dead()) else "survived"
+		var caught: bool = heat != null and (heat.is_dead() or (sili_won and heat.is_incapacitated()))
+		outcomes[peer_id] = "out" if caught else "survived"
 
-	print("[SCORE-DEBUG] _record_round_result: _tubig_players=%s sili_peer=%d outcomes=%s" % [
-		_tubig_players, _sili_peer_id(), outcomes])
+	print("[SCORE-DEBUG] _record_round_result: sili_won=%s _tubig_players=%s sili_peer=%d outcomes=%s" % [
+		sili_won, _tubig_players, _sili_peer_id(), outcomes])
 	SeriesManager.record_round(_sili_peer_id(), outcomes)
 
 

@@ -16,6 +16,13 @@ const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
 ## of the match rather than looking identical to someone who made it.
 const DOWNED_TINT := Color(0.4, 0.4, 0.4)
 
+## Sprite tint the instant a Tubig actually dies. Distinct from DOWNED_TINT
+## (plain grey, only applied at the final whistle): a greyish-blue reads as
+## "gone" at a glance and, critically, as visually DIFFERENT from a burning
+## teammate - burning is still rescuable, dead is not, and the two states
+## should never look alike mid-match.
+const DEAD_TINT := Color(0.42, 0.5, 0.6)
+
 const TUNNEL_USES_MAX := 3
 
 ## Hard ceiling on tunnel charges however many fountain rolls land on you. Four
@@ -726,22 +733,28 @@ func _on_heat_state_changed(new_state: HeatStatus.State) -> void:
 	# physically pushing it.
 	if new_state == HeatStatus.State.BURNING:
 		animated_sprite.play("heat_" + last_direction)
+		AudioManager.play_sfx_at("sili-tag", global_position)
 	elif new_state == HeatStatus.State.DEAD:
 		AudioManager.play_sfx_at("eliminated", global_position)
+		# Colour only, alpha untouched - see _on_match_ended's DOWNED_TINT note
+		# just below on why concealment's alpha has to stay this function's own.
+		animated_sprite.modulate = Color(DEAD_TINT.r, DEAD_TINT.g, DEAD_TINT.b,
+			animated_sprite.modulate.a)
 	elif new_state == HeatStatus.State.NORMAL:
-		AudioManager.play_sfx_at("rescue_complete", global_position)
+		AudioManager.play_sfx_at("tubig_rescue", global_position)
 
 
 ## Runs on every peer, same reasoning as _on_heat_state_changed above - the
 ## whistle is one moment everyone sees at once, not just the person it happened
-## to. Only tints someone still down (burning or dead) when time runs out; a
-## Tubig who made it to the buzzer NORMAL keeps their normal colour.
+## to. Only tints someone still BURNING when time runs out; a Tubig who made
+## it to the buzzer NORMAL keeps their normal colour, and a Tubig who already
+## died keeps DEAD_TINT rather than being flattened to the plainer downed grey.
 ##
 ## Sets colour only, not alpha - _on_concealment_changed already owns alpha for
 ## the local player, and stomping it here would un-hide a concealed Tubig the
 ## instant the match ends.
 func _on_match_ended(_sili_won: bool) -> void:
-	if heat_status.is_incapacitated():
+	if heat_status.is_burning():
 		animated_sprite.modulate = Color(DOWNED_TINT.r, DOWNED_TINT.g, DOWNED_TINT.b,
 			animated_sprite.modulate.a)
 

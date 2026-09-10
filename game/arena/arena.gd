@@ -63,6 +63,12 @@ var map_instance: Node2D = null
 @onready var threat_vignette: Control = $ThreatLayer/ThreatVignette
 
 var _tubig_players: Array = []
+## Set the first time a Tubig actually shows up in the group. _check_for_sili_win
+## treats an empty roster as "nobody left to catch", which is correct once the
+## round is underway - but the roster is also empty for a moment before
+## spawning finishes, and without this guard that same moment reads as a
+## full-wipe win before anyone was ever in the match.
+var _tubigs_ever_seen: bool = false
 var _spectator: SpectatorView = null
 var _danger_music: DangerMusic = null
 
@@ -421,6 +427,8 @@ func _refresh_team_state() -> void:
 		return
 
 	_tubig_players = get_tree().get_nodes_in_group("tubig")
+	if not _tubig_players.is_empty():
+		_tubigs_ever_seen = true
 
 	for tubig in _tubig_players:
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
@@ -780,6 +788,15 @@ func _check_for_sili_win() -> void:
 	# act. Nobody left to catch is the same verdict as nobody left standing -
 	# there is no play remaining either way - so it is deliberately not a
 	# special case with its own branch.
+	#
+	# EXCEPT when the roster has never had anyone in it yet. A round that
+	# hasn't finished spawning also has an empty list, and that is not a wipe -
+	# it's the round not having started. Without this, a poll or a signal
+	# firing in that brief window declares an instant Sili win over a match
+	# nobody actually played.
+	if live.is_empty() and not _tubigs_ever_seen:
+		return
+
 	MatchManager.end_match(true)
 
 

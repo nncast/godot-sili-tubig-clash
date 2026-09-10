@@ -269,12 +269,22 @@ func _describe(kind: int, amount: int) -> String:
 	return "a blessing"
 
 
-## Tints the basin itself rather than the whole node, so the "over" canopy tile
-## keeps its own colour and the fade shader has nothing fighting it.
+## Tints both TileMapLayers rather than the whole node, so the fountain reads
+## as charged/spent from every angle - including the "top" splash layer that
+## draws above whoever is standing at the basin. Only the RGB channels are
+## touched: "top" also carries canopy_fade.gd, which drives modulate.a on its
+## own WHOLE-mode fade (see its _push_blend()) and depends on this leaving that
+## alone rather than stamping a full Color over it every charge/spend.
 func _apply_tint() -> void:
-	var basin := get_node_or_null("bottom") as CanvasItem
-	if basin != null:
-		basin.modulate = READY_TINT if is_charged else SPENT_TINT
+	var tint := READY_TINT if is_charged else SPENT_TINT
+	_tint_layer(get_node_or_null("bottom"), tint)
+	_tint_layer(get_node_or_null("top"), tint)
+
+
+func _tint_layer(layer: CanvasItem, tint: Color) -> void:
+	if layer == null:
+		return
+	layer.modulate = Color(tint.r, tint.g, tint.b, layer.modulate.a)
 
 
 func _name_of(peer_id: int) -> String:

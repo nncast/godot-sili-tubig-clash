@@ -325,7 +325,9 @@ func covering_cell_for(global_pos: Vector2) -> Variant:
 				best = cell
 				found = true
 
-	return best if found else null
+	if found:
+		return best
+	return null
 
 
 # --- Canopy stealth ----------------------------------------------------------

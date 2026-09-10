@@ -548,8 +548,8 @@ func _map_point(world_pos: Vector2) -> Vector2:
 func _fitted_view_rect(frame: Rect2) -> Rect2:
 	if _world_rect.size.x <= 0.0 or _world_rect.size.y <= 0.0:
 		return frame
-	var scale: float = minf(frame.size.x / _world_rect.size.x, frame.size.y / _world_rect.size.y)
-	var fitted := _world_rect.size * scale
+	var fit_scale: float = minf(frame.size.x / _world_rect.size.x, frame.size.y / _world_rect.size.y)
+	var fitted := _world_rect.size * fit_scale
 	return Rect2(frame.position + (frame.size - fitted) * 0.5, fitted)
 
 

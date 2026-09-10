@@ -543,6 +543,7 @@ func _build_team_panel() -> void:
 		dot.custom_minimum_size = Vector2(DOT_SIZE, DOT_SIZE)
 		var dot_style := StyleBoxFlat.new()
 		dot_style.bg_color = TUBIG_FREE_COLOR
+		@warning_ignore("integer_division")
 		dot_style.set_corner_radius_all(DOT_SIZE / 2)
 		dot.add_theme_stylebox_override("panel", dot_style)
 		row.add_child(dot)
@@ -579,8 +580,8 @@ func _build_team_panel() -> void:
 			var heart := TextureRect.new()
 			heart.custom_minimum_size = Vector2(14, 14)
 			heart.texture = HEART_TEXTURE
-			heart.expand_mode = 1
-			heart.stretch_mode = 5
+			heart.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			heart.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			hearts_row.add_child(heart)
 			heart_icons.append(heart)
 
@@ -837,6 +838,7 @@ func _on_player_left(peer_id: int, _display_name: String) -> void:
 
 
 func _on_time_updated(time_remaining: float, _match_duration: float) -> void:
+	@warning_ignore("integer_division")
 	var minutes := int(time_remaining) / 60
 	var seconds := int(time_remaining) % 60
 	# Just the clock now - tag/rescue/speed lines go to HUD/EventFeed, which has

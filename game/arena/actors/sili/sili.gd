@@ -253,7 +253,7 @@ func _exit_exhaustion() -> void:
 	recovered_from_exhaustion.emit()
 
 
-func _on_stamina_changed(current_stamina: float, max_stamina: float) -> void:
+func _on_stamina_changed(current_stamina: float, _max_stamina: float) -> void:
 	stamina_bar.value = current_stamina
 
 

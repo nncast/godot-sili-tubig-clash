@@ -28,7 +28,10 @@ var _cancel_callback: Callable = Callable()
 
 
 func _ready() -> void:
-	layer = 100
+	# Above loading_screen.gd's curtain (layer 128) too, so a disconnect or
+	# validation message raised mid-transition is still readable instead of
+	# being hidden behind it.
+	layer = 200
 	_build()
 
 
@@ -39,10 +42,20 @@ func _build() -> void:
 	_dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_dim)
 
+	# CenterContainer, not PRESET_CENTER on the panel itself: set_anchors_preset
+	# moves the anchors to the middle but leaves the offsets where they were
+	# (zero, for a freshly built Control), which collapses the anchor rect to a
+	# single point and lets the panel's minimum size grow down-and-right from
+	# it instead of being centered - same bug leaderboard_panel.gd hit and
+	# fixed the same way.
+	var centre := CenterContainer.new()
+	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(centre)
+
 	_panel = PanelContainer.new()
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_panel.custom_minimum_size = Vector2(380, 0)
-	add_child(_panel)
+	centre.add_child(_panel)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 22)

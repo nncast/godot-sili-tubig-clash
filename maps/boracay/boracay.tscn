@@ -33100,7 +33100,7 @@ position = Vector2(1294, 227)
 collision_mask = 2
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelB")
-exit_offset = Vector2(0, 24)
+exit_offset = Vector2(0, 0)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Tunnels/tunnel/TunnelA" unique_id=1690906245]
 position = Vector2(-1, 1)
@@ -33111,7 +33111,7 @@ position = Vector2(1599, 162)
 collision_mask = 2
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelA")
-exit_offset = Vector2(0, 24)
+exit_offset = Vector2(0, 0)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Tunnels/tunnel/TunnelB" unique_id=1063568442]
 position = Vector2(-1, 1)
@@ -33124,7 +33124,7 @@ position = Vector2(1940, 460)
 collision_mask = 2
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelB")
-exit_offset = Vector2(0, 24)
+exit_offset = Vector2(0, 0)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Tunnels/tunnel2/TunnelA" unique_id=2048186445]
 position = Vector2(-1, 1)
@@ -33135,7 +33135,7 @@ position = Vector2(1155, -363)
 collision_mask = 2
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelA")
-exit_offset = Vector2(0, 24)
+exit_offset = Vector2(0, 0)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Tunnels/tunnel2/TunnelB" unique_id=1055740171]
 position = Vector2(-1, 1)
@@ -33148,7 +33148,7 @@ position = Vector2(1938, -8)
 collision_mask = 2
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelB")
-exit_offset = Vector2(0, 24)
+exit_offset = Vector2(0, 0)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Tunnels/tunnel3/TunnelA" unique_id=694171214]
 position = Vector2(-1, 1)
@@ -33159,7 +33159,7 @@ position = Vector2(2226, -235)
 collision_mask = 2
 script = ExtResource("11_60hbj")
 linked_tunnel = NodePath("../TunnelA")
-exit_offset = Vector2(0, 24)
+exit_offset = Vector2(0, 0)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Tunnels/tunnel3/TunnelB" unique_id=834369427]
 position = Vector2(-1, 1)

@@ -752,7 +752,13 @@ func _live_tubig_bodies() -> Array:
 ## the comment on _win_check_accum for why this exists alongside the
 ## event-driven path rather than instead of it.
 func _process(delta: float) -> void:
-	if not multiplayer.is_server():
+	# has_multiplayer_peer() first: once a peer disconnects mid-match,
+	# multiplayer.multiplayer_peer goes null but this scene keeps ticking for
+	# the few seconds match_result.gd takes to lead the player back to the
+	# title, and calling is_server() with no peer assigned logs an engine
+	# error every single frame instead of returning cleanly. Same guard
+	# _record_round_result already uses below.
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 		return
 	if not MatchManager.is_running:
 		return
@@ -764,7 +770,7 @@ func _process(delta: float) -> void:
 
 
 func _check_for_sili_win() -> void:
-	if not multiplayer.is_server():
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
 		return
 	# Nothing to decide before the round starts. end_match() refuses while
 	# is_running is false anyway, so this only keeps an empty pregame roster

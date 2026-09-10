@@ -744,6 +744,7 @@ clip_text = true
 
 [node name="RescueIndicator" type="ProgressBar" parent="." unique_id=694303160]
 visible = false
+z_index = 10
 offset_left = -24.0
 offset_top = -29.0
 offset_right = 24.0

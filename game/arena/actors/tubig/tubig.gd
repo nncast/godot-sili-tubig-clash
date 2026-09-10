@@ -11,6 +11,11 @@ const TUNNEL_COOLDOWN := 1.0
 ## can't drift apart.
 const HEART_SPENT_COLOR := Color(0.25, 0.25, 0.25, 0.5)
 
+## Sprite tint for a Tubig still burning or dead when the final whistle goes -
+## the buzzer doesn't rescue anyone, so whoever's still down should read as out
+## of the match rather than looking identical to someone who made it.
+const DOWNED_TINT := Color(0.4, 0.4, 0.4)
+
 const TUNNEL_USES_MAX := 3
 
 ## Hard ceiling on tunnel charges however many fountain rolls land on you. Four
@@ -140,7 +145,8 @@ func _ready() -> void:
 	stamina_changed.connect(_on_stamina_changed)
 
 	heat_status.state_changed.connect(_on_heat_state_changed)
-	
+	MatchManager.match_ended.connect(_on_match_ended)
+
 	heat_status.lives_changed.connect(_on_lives_changed)
 
 	_update_hearts(heat_status.lives_left)
@@ -724,6 +730,20 @@ func _on_heat_state_changed(new_state: HeatStatus.State) -> void:
 		AudioManager.play_sfx_at("eliminated", global_position)
 	elif new_state == HeatStatus.State.NORMAL:
 		AudioManager.play_sfx_at("rescue_complete", global_position)
+
+
+## Runs on every peer, same reasoning as _on_heat_state_changed above - the
+## whistle is one moment everyone sees at once, not just the person it happened
+## to. Only tints someone still down (burning or dead) when time runs out; a
+## Tubig who made it to the buzzer NORMAL keeps their normal colour.
+##
+## Sets colour only, not alpha - _on_concealment_changed already owns alpha for
+## the local player, and stomping it here would un-hide a concealed Tubig the
+## instant the match ends.
+func _on_match_ended(_sili_won: bool) -> void:
+	if heat_status.is_incapacitated():
+		animated_sprite.modulate = Color(DOWNED_TINT.r, DOWNED_TINT.g, DOWNED_TINT.b,
+			animated_sprite.modulate.a)
 
 
 func _play_heat_animation() -> void:

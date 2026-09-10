@@ -36,11 +36,16 @@ var _tag_cooldowns: Dictionary = {}
 @onready var stamina_bar: ProgressBar = $ui/StaminaBar
 @onready var boost_label: Label = $ui/BoostLabel
 @onready var tag_hitbox: Area2D = $TagHitbox
+@onready var name_label: Label = $NameLabel
 
 
 func _ready() -> void:
 	if multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
 		ui_layer.visible = false
+
+	# Set once - unlike ui_layer's contents, this is world-space and meant for
+	# EVERY viewer to read, not just the locally-controlled player.
+	name_label.text = _own_name()
 
 	stamina_bar.max_value = MAX_STAMINA
 	stamina_bar.value = stamina

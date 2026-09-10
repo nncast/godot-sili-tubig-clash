@@ -121,11 +121,20 @@ var _fountain_prompt: Label = null
 var _stamina_buff_remaining: float = 0.0
 @onready var rescue_indicator: ProgressBar = $RescueIndicator
 @onready var rescue_indicator_label: Label = $RescueIndicator/RescueLabel
+@onready var name_label: Label = $NameLabel
 
 
 func _ready() -> void:
 	if multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
 		ui_layer.visible = false
+
+	# World-space, not ui_layer - every viewer needs to read this, not just the
+	# locally-controlled player. Left visible even while concealed: concealment
+	# only drops you off the team minimap (see minimap.gd) - "you are not
+	# invisible in the world, the Sili can still walk into you and tag you" -
+	# so a nameless-but-fully-visible sprite would be a bigger tell that
+	# somebody is hiding than just leaving the name where it always is.
+	name_label.text = _own_name()
 
 	stamina_bar.max_value = MAX_STAMINA
 	stamina_bar.value = stamina

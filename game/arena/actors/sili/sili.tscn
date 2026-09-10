@@ -633,6 +633,18 @@ animation = &"idle_s"
 position = Vector2(0, 4)
 shape = SubResource("RectangleShape2D_3sajy")
 
+[node name="NameLabel" type="Label" parent="." unique_id=1702269099]
+offset_left = -60.0
+offset_top = -46.0
+offset_right = 60.0
+offset_bottom = -30.0
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(1, 0.82, 0.8, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
+theme_override_constants/outline_size = 4
+horizontal_alignment = 1
+clip_text = true
+
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1241409087]
 zoom = Vector2(3, 3)
 position_smoothing_enabled = true

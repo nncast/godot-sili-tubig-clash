@@ -728,6 +728,18 @@ shape = SubResource("RectangleShape2D_3sajy")
 zoom = Vector2(3, 3)
 position_smoothing_enabled = true
 
+[node name="NameLabel" type="Label" parent="." unique_id=694303159]
+offset_left = -60.0
+offset_top = -46.0
+offset_right = 60.0
+offset_bottom = -30.0
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.85, 0.9, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.85)
+theme_override_constants/outline_size = 4
+horizontal_alignment = 1
+clip_text = true
+
 [node name="RescueIndicator" type="ProgressBar" parent="." unique_id=694303160]
 visible = false
 offset_left = -24.0

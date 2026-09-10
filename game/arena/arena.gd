@@ -420,7 +420,6 @@ func _refresh_team_state() -> void:
 	if not is_inside_tree():
 		return
 
-	var previous_count := _tubig_players.size()
 	_tubig_players = get_tree().get_nodes_in_group("tubig")
 
 	for tubig in _tubig_players:
@@ -429,10 +428,19 @@ func _refresh_team_state() -> void:
 			heat.burned.connect(_check_for_sili_win)
 			heat.died.connect(_check_for_sili_win)
 
-	# Rebuilding is cheap for a handful of rows and keeps this correct no
-	# matter what order peers finish spawning in.
-	if _tubig_players.size() != previous_count:
-		_build_team_panel()
+	# Unconditional. This used to skip the rebuild whenever _tubig_players.size()
+	# came out equal to what it was before the refresh, on the theory that a
+	# same-size roster means nothing worth redrawing changed. That assumption
+	# is what could leave a Tubig staring at an empty or stale team panel:
+	# this function fires off whichever spawn/despawn signal a given peer
+	# happens to receive, in whatever order the network delivers them, and a
+	# size comparison against the wrong baseline can read as "no change" even
+	# when the actual roster (which bodies are in it, not just how many) did
+	# change. Rebuilding is cheap for a handful of rows - see
+	# _build_team_panel - so there's no real cost to just always doing it and
+	# guaranteeing the panel matches reality instead of trusting a shortcut
+	# that depended on an ordering multiplayer replication doesn't promise.
+	_build_team_panel()
 	_configure_local_hud()
 
 
@@ -531,10 +539,9 @@ func _build_team_panel() -> void:
 		dot.add_theme_stylebox_override("panel", dot_style)
 		row.add_child(dot)
 
-		# The ONLY place a player's name appears during a match. Names are
-		# deliberately never drawn above characters in-world: at a glance
-		# mid-chase you should be reading team colour and nothing else, so
-		# picking a target out of a scattering crowd stays a real decision.
+		# Also drawn above each character in-world (see sili.tscn/tubig.tscn's
+		# own NameLabel) - this copy is what lets you read a teammate's status
+		# and name together without them needing to be on screen at all.
 		var name_label := Label.new()
 		name_label.custom_minimum_size = Vector2(96, 0)
 		name_label.text = _display_name_for(tubig)

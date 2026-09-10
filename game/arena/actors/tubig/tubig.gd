@@ -99,7 +99,6 @@ var _hidden_label: Label = null
 @onready var ui_layer: CanvasLayer = $ui
 @onready var stamina_bar: ProgressBar = $ui/StaminaBar
 @onready var boost_label: Label = $ui/BoostLabel
-@onready var rescue_bar: ProgressBar = $ui/RescueBar
 @onready var hearts: Array = [$ui/HeartsRow/Heart1, $ui/HeartsRow/Heart2, $ui/HeartsRow/Heart3]
 @onready var heat_status: HeatStatus = $HeatStatus
 @onready var interaction_area: Area2D = $InteractionArea
@@ -141,9 +140,7 @@ func _ready() -> void:
 	stamina_changed.connect(_on_stamina_changed)
 
 	heat_status.state_changed.connect(_on_heat_state_changed)
-
-	rescue_bar.visible = false
-	rescue_progress.connect(_on_rescue_progress)
+	
 	heat_status.lives_changed.connect(_on_lives_changed)
 
 	_update_hearts(heat_status.lives_left)
@@ -692,11 +689,6 @@ func _exit_exhaustion() -> void:
 
 func _on_stamina_changed(current_stamina: float, max_stamina: float) -> void:
 	stamina_bar.value = current_stamina
-
-
-func _on_rescue_progress(progress: float) -> void:
-	rescue_bar.visible = progress > 0.0
-	rescue_bar.value = progress * 100.0
 
 
 func _on_lives_changed(new_lives_left: int) -> void:

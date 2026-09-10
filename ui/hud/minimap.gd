@@ -13,8 +13,16 @@ extends Control
 ##            plus a red dot for the Sili IF any Tubig currently has it on
 ##            screen. The red dot is shared team-wide and vanishes the instant
 ##            the last person loses sight of it.
-##   Sili   - only Tubig you've already caught, so the map is empty until your
-##            first tag lands and it never leads you to anyone still free.
+##   Sili   - every Tubig you've already caught (permanent, same as the
+##            Tubig-side red dot's "already known" bucket), PLUS any free
+##            Tubig who happens to be inside YOUR OWN camera view right now -
+##            same on-screen-right-now rule as the Tubig side's red dot, just
+##            evaluated locally instead of over the network since there's only
+##            one Sili to ask. That live dot disappears the instant the Tubig
+##            steps outside your view; it is never a lingering "last seen here"
+##            marker and never reveals anyone you haven't actually laid eyes on.
+##            Your own position is always shown as a red dot with a white ring,
+##            exactly like every teammate's self-marker on the Tubig side.
 ##
 ## Colour is the only identifier here - names are deliberately not drawn on the
 ## map or above characters, so a mid-chase glance tells you team and position
@@ -38,6 +46,12 @@ const TRANSPARENT := Color(0, 0, 0, 0)
 @export var SELF_DOT_RADIUS: float = 4.0
 @export var ENTITY_REFRESH_INTERVAL: float = 0.5  # how often we re-scan the groups
 @export var MAX_BAKE_DIMENSION: int = 512         # sanity guard on huge tilemaps
+## Ignore the outer edge of the Sili's own view when deciding whether a free
+## Tubig counts as "on screen" for the live minimap dot below. Same value and
+## same reasoning as tubig.gd's SIGHTING_MARGIN: a body that has only just
+## clipped the very edge of the frame shouldn't light up a dot before the
+## player themselves would say they can see it.
+@export var SILI_VIEW_MARGIN: float = 0.08
 
 var _map_texture: ImageTexture = null
 var _world_rect: Rect2 = Rect2()
@@ -345,7 +359,7 @@ func _draw_for_tubig() -> void:
 ## pulsing purple ring on their position.
 ##
 ## The orange burning ring already said "this person is tagged"; it did not say
-## WHICH WAY TO RUN, which is the only thing that matters while a fifteen-second
+## WHICH WAY TO RUN, which is the only thing that matters while a thirty-second
 ## burn timer is running. A dot on a small map still needs to be found. A line
 ## from you to them can be read at a glance and turns a rescue into a decision
 ## about distance rather than a hunt for a marker.
@@ -395,20 +409,33 @@ func _draw_dashed_line(from: Vector2, to: Vector2, color: Color) -> void:
 
 
 func _draw_for_sili() -> void:
-	# Caught Tubig only. Nobody caught yet means an empty map - the Sili never
-	# gets a free read on players who are still free.
+	# Caught Tubig show up unconditionally (they're already known). A free
+	# Tubig only shows up while they are actually inside the Sili's own camera
+	# view right now - mirrors the Tubig side's red dot, which likewise only
+	# exists while somebody currently has eyes on the target. No occlusion
+	# test here, same as tubig.gd's _can_see_sili(): if it's inside the view
+	# rect it counts, same as what the player's own eyes are already seeing.
+	var camera: Camera2D = _local_camera()
+
 	for tubig in _tubig_players:
 		if not is_instance_valid(tubig):
 			continue
 		var heat = tubig.get_node_or_null("HeatStatus")
-		if heat == null or not heat.is_incapacitated():
-			continue
+		var caught: bool = heat != null and heat.is_incapacitated()
+
+		if not caught:
+			# Concealed Tubig stay hidden from the Sili's minimap the same way
+			# they vanish from the Tubig-side map - being tucked into a hiding
+			# spot should not be undone by merely walking past with a camera.
+			var concealed: bool = tubig.get("is_concealed") == true
+			if concealed or camera == null or not _point_in_view(camera, tubig.global_position):
+				continue
 
 		var point := _map_point(tubig.global_position)
-		var alpha: float = 0.4 if heat.is_dead() else 1.0
+		var alpha: float = 0.4 if (caught and heat.is_dead()) else 1.0
 		draw_circle(point, DOT_RADIUS, Color(COLOR_TUBIG.r, COLOR_TUBIG.g, COLOR_TUBIG.b, alpha))
 
-		if heat.is_burning():
+		if caught and heat.is_burning():
 			# Pulses while the burn timer is still running, i.e. while this
 			# marker is worth camping.
 			var ring_alpha := 0.35 + 0.45 * (0.5 + 0.5 * sin(_pulse_time * 4.0))
@@ -441,11 +468,46 @@ func _fitted_view_rect(frame: Rect2) -> Rect2:
 	return Rect2(frame.position + (frame.size - fitted) * 0.5, fitted)
 
 
+## The local player's own Camera2D, if it has one and it's the active one.
+## Remote-controlled copies of a body have their Camera2D disabled (see
+## arena.gd's _build_player), so this can only ever resolve to a camera that
+## is actually feeding this peer's screen.
+func _local_camera() -> Camera2D:
+	if not is_instance_valid(_local_player):
+		return null
+	var camera := _local_player.get_node_or_null("Camera2D") as Camera2D
+	if camera == null or not camera.enabled:
+		return null
+	return camera
+
+
+## Is this world position inside the given camera's current view, minus a
+## small edge margin? Identical rule to tubig.gd's _can_see_sili(): a plain
+## rect containment test against the camera's own zoom and screen centre, no
+## occlusion check - "on screen" here means exactly what the player's own eyes
+## are already seeing, nothing more and nothing less.
+func _point_in_view(camera: Camera2D, world_pos: Vector2) -> bool:
+	var view_size: Vector2 = get_viewport_rect().size / camera.zoom
+	var margin: Vector2 = view_size * SILI_VIEW_MARGIN
+	var view_rect := Rect2(
+		camera.get_screen_center_position() - view_size * 0.5 + margin * 0.5,
+		view_size - margin
+	)
+	return view_rect.has_point(world_pos)
+
+
 # --- Terrain baking helpers ---
 
 func _legacy_cell_color(tile_map: TileMap, layer_idx: int, cell: Vector2i) -> Color:
 	var source_id: int = tile_map.get_cell_source_id(layer_idx, cell)
-	if source_id == -1:
+	# -1 means "nothing painted here". A cell can also carry a source id that
+	# used to exist but was later removed from the TileSet resource (an atlas
+	# deleted after the level was painted) - that id is stale data, not "no
+	# tile", so it still reaches here as something other than -1.  Without this
+	# check get_source() below logs a "No TileSet atlas source with id N" C++
+	# error for every such cell sampled during the bake instead of just being
+	# treated as an empty tile.
+	if source_id == -1 or not tile_map.tile_set.has_source(source_id):
 		return TRANSPARENT
 
 	var source := tile_map.tile_set.get_source(source_id) as TileSetAtlasSource
@@ -473,7 +535,11 @@ func _legacy_cell_color(tile_map: TileMap, layer_idx: int, cell: Vector2i) -> Co
 
 func _layer_cell_color(layer: TileMapLayer, cell: Vector2i) -> Color:
 	var source_id: int = layer.get_cell_source_id(cell)
-	if source_id == -1:
+	# Same stale-id guard as _legacy_cell_color above: a source id can survive
+	# in a layer's cell data after the atlas it pointed to was removed from the
+	# TileSet, and calling get_source() with that id is what was spamming
+	# "No TileSet atlas source with id N" during every bake.
+	if source_id == -1 or not layer.tile_set.has_source(source_id):
 		return TRANSPARENT
 
 	var source := layer.tile_set.get_source(source_id) as TileSetAtlasSource

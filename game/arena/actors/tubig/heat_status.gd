@@ -10,7 +10,7 @@ class_name HeatStatus
 
 enum State { NORMAL, BURNING, DEAD }
 
-@export var BURN_TIMEOUT: float = 15.0  # seconds a player can stay Burning before it's fatal
+@export var BURN_TIMEOUT: float = 30.0  # seconds a player can stay Burning before it's fatal
 ## Hearts are LIVES. One is spent per tag and never comes back - a rescue only
 ## unfreezes you, it does not refund the heart. Counted HERE rather than on the
 ## Tubig body because this node's authority is the server (see
@@ -68,7 +68,7 @@ var is_immune: bool = false:
 ## underneath ticks every frame, and pushing that would put a needless packet
 ## per player per network tick on a Wi-Fi link that is already the weak point
 ## (see the interval throttling on the same scene). Rounded to seconds, the
-## value changes fifteen times per burn and no more.
+## value changes thirty times per burn and no more.
 ##
 ## Same property-with-setter reasoning as `state` and `lives_left`: the
 ## synchronizer assigns it directly on remote peers, so routing through a setter

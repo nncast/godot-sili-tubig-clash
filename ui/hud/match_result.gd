@@ -447,6 +447,10 @@ func _refresh_standings() -> void:
 	_standings_title.text = "FINAL STANDINGS" if done else "STANDINGS - after round %d of %d" % [
 		SeriesManager.round_index, SeriesManager.rounds_total()]
 
+	print("[SCORE-DEBUG] _refresh_standings on peer %d: %s" % [
+		multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1,
+		SeriesManager.standings()])
+
 	var my_id := multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1
 	var place := 0
 	for row in SeriesManager.standings():

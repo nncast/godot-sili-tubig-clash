@@ -112,14 +112,19 @@ func end_series() -> void:
 ## not rescues that were attempted or claimed.
 func credit_rescue(peer_id: int) -> void:
 	if not is_active:
+		print("[SCORE-DEBUG] credit_rescue(%d) ignored - series not active" % peer_id)
 		return
 	_round_rescues[peer_id] = int(_round_rescues.get(peer_id, 0)) + 1
+	print("[SCORE-DEBUG] credit_rescue(%d) -> round tally %d" % [peer_id, _round_rescues[peer_id]])
 
 
 ## Host only, called once from the arena when the match ends.
 ## `outcomes` is peer_id -> "survived" | "out", covering the Tubig only.
 func record_round(sili_id: int, outcomes: Dictionary) -> void:
+	print("[SCORE-DEBUG] record_round called: is_active=%s sili_id=%d outcomes=%s scores_keys=%s" % [
+		is_active, sili_id, outcomes, scores.keys()])
 	if not is_active:
+		print("[SCORE-DEBUG] record_round REFUSED - series not active")
 		return
 
 	var eliminated := 0
@@ -166,12 +171,17 @@ func record_round(sili_id: int, outcomes: Dictionary) -> void:
 	_round_rescues.clear()
 	round_index += 1
 
+	print("[SCORE-DEBUG] record_round finished: awards=%s scores_after=%s" % [
+		summary["awards"], scores])
+
 	_broadcast_round(summary)
 	_broadcast_state()
 
 
 func _award(peer_id: int, points: int, summary: Dictionary) -> void:
 	if not scores.has(peer_id):
+		print("[SCORE-DEBUG] _award(%d, %d) DROPPED - no such peer in scores (have %s)" % [
+			peer_id, points, scores.keys()])
 		return
 	scores[peer_id]["points"] += points
 	summary["awards"][peer_id] = points
@@ -224,8 +234,12 @@ func _rpc_sync_state(new_scores: Dictionary, new_rotation: Array,
 	round_index = new_round_index
 	is_active = active
 	series_id = new_series_id
+	print("[SCORE-DEBUG] _rpc_sync_state received on peer %d: round=%d active=%s scores=%s" % [
+		_local_peer_id_for_debug(), round_index, is_active, scores])
 	standings_changed.emit()
 	if series_complete():
+		print("[SCORE-DEBUG] series_complete on peer %d -> emitting series_finished" % [
+			_local_peer_id_for_debug()])
 		series_finished.emit()
 
 
@@ -240,3 +254,10 @@ func _rpc_round_recorded(summary: Dictionary) -> void:
 ## logic and should not fall over because of where it was called from.
 func _is_networked() -> bool:
 	return multiplayer != null and multiplayer.has_multiplayer_peer()
+
+
+## Same null-safety as _is_networked(), for the [SCORE-DEBUG] prints only.
+func _local_peer_id_for_debug() -> int:
+	if _is_networked():
+		return multiplayer.get_unique_id()
+	return 1

@@ -855,8 +855,10 @@ func _on_match_ended(sili_won: bool) -> void:
 ## were validated, which is the only way to know who performed each.
 func _record_round_result() -> void:
 	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		print("[SCORE-DEBUG] _record_round_result skipped - not server")
 		return
 	if not SeriesManager.is_active:
+		print("[SCORE-DEBUG] _record_round_result skipped - SeriesManager not active (practice match)")
 		return  # practice match - nothing to score
 
 	var outcomes: Dictionary = {}
@@ -869,6 +871,8 @@ func _record_round_result() -> void:
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
 		outcomes[peer_id] = "out" if (heat and heat.is_dead()) else "survived"
 
+	print("[SCORE-DEBUG] _record_round_result: _tubig_players=%s sili_peer=%d outcomes=%s" % [
+		_tubig_players, _sili_peer_id(), outcomes])
 	SeriesManager.record_round(_sili_peer_id(), outcomes)
 
 

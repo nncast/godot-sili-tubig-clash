@@ -139,8 +139,11 @@ func escape_rate(record: Dictionary) -> float:
 ## the same replicated numbers, so everyone's board agrees without this needing
 ## a network path of its own.
 func _on_series_finished() -> void:
-	bank_series(SeriesManager.series_id, SeriesManager.scores,
+	print("[SCORE-DEBUG] Leaderboard._on_series_finished: series_id=%d scores=%s rounds=%d" % [
+		SeriesManager.series_id, SeriesManager.scores, SeriesManager.rotation.size()])
+	var banked := bank_series(SeriesManager.series_id, SeriesManager.scores,
 		SeriesManager.rotation.size(), SeriesManager.standings())
+	print("[SCORE-DEBUG] bank_series result: %s" % banked)
 
 
 ## Split out from the signal so it can be driven directly by a test, and so the
@@ -148,8 +151,12 @@ func _on_series_finished() -> void:
 func bank_series(series_id: int, scores: Dictionary, rounds_played: int,
 		final_standings: Array) -> bool:
 	if series_id == 0 or scores.is_empty() or rounds_played <= 0:
+		print("[SCORE-DEBUG] bank_series REFUSED - bad args: series_id=%d scores_empty=%s rounds_played=%d" % [
+			series_id, scores.is_empty(), rounds_played])
 		return false
 	if _recent_series.has(series_id):
+		print("[SCORE-DEBUG] bank_series REFUSED - series_id %d already banked (%s)" % [
+			series_id, _recent_series])
 		return false
 
 	_recent_series.append(series_id)

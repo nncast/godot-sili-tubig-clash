@@ -90,6 +90,23 @@ var _panel_connections: Array = []
 var _win_check_accum: float = 0.0
 const WIN_CHECK_INTERVAL: float = 0.5
 
+## The same belt-and-suspenders idea as _win_check_accum, for the team panel -
+## and specifically for the peers the one above never covers. _process() returns
+## on its first line for anyone who is not the server, so that poll is a
+## HOST-ONLY backup: every client was left purely event-driven, rebuilding only
+## when a spawned/player_left signal happened to arrive. A signal that came out
+## of order, or a spawn that never landed at all, left that player looking at a
+## panel missing their teammates for the rest of the round with nothing in the
+## scene able to notice or correct it. The host never saw the bug because it
+## builds the whole roster locally in one loop.
+##
+## Compares who is ACTUALLY in the tubig group against who the panel was last
+## drawn from, so the steady state costs one group query and a string compare
+## rather than a rebuild - it only redraws when those two genuinely disagree.
+var _panel_roster_signature: String = ""
+var _panel_check_accum: float = 0.0
+const PANEL_CHECK_INTERVAL: float = 0.5
+
 
 ## Only used if Map/SpawnPoints is missing or has no marker for a role - the
 ## real positions come from the SpawnPoint nodes you drag around in the editor.
@@ -214,6 +231,15 @@ func _on_ready_timeout() -> void:
 func _launch_round_now() -> void:
 	_round_launched = true
 	_spawn_all_players()
+	# MultiplayerSpawner.spawned is emitted on PUPPETS ONLY - the authority that
+	# called spawn() never hears about its own spawns. So _on_player_spawned,
+	# which is what re-runs _configure_local_hud once bodies exist, never fires
+	# on the host: its only configure was the one from _ready(), before anyone
+	# had spawned, which handed the minimap, the threat vignette, the danger
+	# music and the spectator a null player and never corrected any of them.
+	# spawn() adds the bodies synchronously, so by here they are all in the tree
+	# and one refresh catches the lot.
+	_refresh_team_state()
 	MatchManager.start_match()
 
 
@@ -472,11 +498,14 @@ func _build_player(data: Dictionary) -> Node:
 	return instance
 
 
-## Fires locally on EVERY peer, the instant a spawn actually lands in their
-## own scene tree - the correct way to know spawning finished, instead of
-## guessing with a fixed timer that could be wrong on a slower connection
-## and permanently leave the local HUD (or a teammate's team-panel row)
-## unconfigured.
+## Fires the instant a spawn lands in this peer's own scene tree - the correct
+## way to know spawning finished, instead of guessing with a fixed timer that
+## could be wrong on a slower connection and permanently leave the local HUD (or
+## a teammate's team-panel row) unconfigured.
+##
+## PUPPETS ONLY. MultiplayerSpawner does not emit `spawned` on the authority
+## that called spawn(), so this never runs on the host - see _launch_round_now,
+## which refreshes by hand for exactly that reason.
 func _on_player_spawned(_node: Node) -> void:
 	_refresh_team_state()
 
@@ -588,6 +617,11 @@ func _display_name_for(character: Node) -> String:
 ## so everyone can read the same board.
 func _build_team_panel() -> void:
 	_drop_panel_connections()
+
+	# Recorded from the roster actually being drawn, not from a fresh group
+	# query, so the signature can never claim the panel shows something it
+	# doesn't - see _reconcile_team_panel.
+	_panel_roster_signature = _roster_signature(_tubig_players)
 
 	# remove_child as well as queue_free: queue_free only deletes at the end of
 	# the frame, so without it the panel briefly shows the old rows underneath
@@ -817,6 +851,11 @@ func _live_tubig_bodies() -> Array:
 ## the comment on _win_check_accum for why this exists alongside the
 ## event-driven path rather than instead of it.
 func _process(delta: float) -> void:
+	# Before the server-only guard below, deliberately: this half is what every
+	# non-host peer relies on, and gating it the way the win check is gated is
+	# the exact bug it exists to fix.
+	_reconcile_team_panel(delta)
+
 	# has_multiplayer_peer() first: once a peer disconnects mid-match,
 	# multiplayer.multiplayer_peer goes null but this scene keeps ticking for
 	# the few seconds match_result.gd takes to lead the player back to the
@@ -832,6 +871,34 @@ func _process(delta: float) -> void:
 		return
 	_win_check_accum = 0.0
 	_check_for_sili_win()
+
+
+## Runs on EVERY peer. Rebuilds only when the roster on screen has drifted from
+## the roster in the tree, so a client that missed a spawn signal repairs itself
+## within half a second instead of playing the whole round with a wrong panel.
+func _reconcile_team_panel(delta: float) -> void:
+	_panel_check_accum += delta
+	if _panel_check_accum < PANEL_CHECK_INTERVAL:
+		return
+	_panel_check_accum = 0.0
+	if not is_inside_tree():
+		return
+	if _roster_signature(get_tree().get_nodes_in_group("tubig")) == _panel_roster_signature:
+		return
+	_refresh_team_state()
+
+
+## Who the panel is showing, as one comparable value. Sorted because group order
+## is whatever order the nodes happened to enter the tree in, which differs from
+## peer to peer and between rounds - unsorted, two identical rosters could
+## compare unequal and rebuild the panel every half second forever.
+func _roster_signature(bodies: Array) -> String:
+	var ids: Array[String] = []
+	for body in bodies:
+		if is_instance_valid(body) and not body.is_queued_for_deletion():
+			ids.append(String(body.name))
+	ids.sort()
+	return ",".join(ids)
 
 
 func _check_for_sili_win() -> void:

@@ -230,6 +230,11 @@ func _process(_delta: float) -> void:
 			# "Signal 'died' is already connected". _configure_local_hud reruns
 			# on every spawn AND now on every departure, and connecting an
 			# already-connected signal is an error rather than a no-op.
+			# The host is the peer that calls spawn(), and MultiplayerSpawner
+			# never emits `spawned` back to the authority - so nothing here is
+			# waiting on a signal. If this is null, _launch_round_now stopped
+			# refreshing the local HUD by hand and the host is back to a minimap,
+			# vignette, danger track and spectator all pointed at nobody.
 			var spectator := _find_spectator()
 			_c("spectator view exists", spectator != null, true)
 			if spectator != null:

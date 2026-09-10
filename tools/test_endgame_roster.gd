@@ -27,6 +27,9 @@ var _arena: Node = null
 var _frame := 0
 var _phase := 0
 var _ended_with: Variant = null
+## Seconds to sit still before the next phase, for the one assertion that has to
+## outlast a real interval rather than a frame count.
+var _wait := 0.0
 
 
 func _c(label: String, actual: Variant, expected: Variant) -> void:
@@ -64,15 +67,28 @@ func _tubigs() -> Array:
 	return get_tree().get_nodes_in_group("tubig")
 
 
+## How many rows the team panel is actually showing. _build_team_panel calls
+## remove_child before queue_free, so this reads the truth immediately after a
+## rebuild rather than a frame later.
+func _panel_rows() -> int:
+	var panel := _arena.get_node_or_null("HUD/TeamPanel")
+	if panel == null:
+		return -1
+	return panel.get_child_count()
+
+
 func _quit_player(peer_id: int, display_name: String) -> void:
 	NetworkManager.players.erase(peer_id)
 	NetworkManager.roles.erase(peer_id)
 	NetworkManager.player_left.emit(peer_id, display_name)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_frame += 1
 	if _frame < 10:
+		return
+	if _wait > 0.0:
+		_wait -= delta
 		return
 
 	match _phase:
@@ -86,27 +102,46 @@ func _process(_delta: float) -> void:
 			_phase = 1
 
 		1:
-			# One quits. A teammate is still on their feet, so there is still
-			# a round to play and it must NOT end here.
-			_quit_player(2, "Bee")
+			# --- A peer that missed a spawn signal repairs itself ---
+			# Redrawing the panel from an empty roster reproduces exactly what a
+			# client sees when a spawned signal arrives out of order or not at
+			# all: bodies present in the tree, no rows on screen, and no further
+			# signal coming to correct it. Only the periodic reconcile can
+			# notice, and before it existed this state lasted the whole round.
+			_c("panel is drawn to begin with", _panel_rows(), 2)
+			_arena._tubig_players = []
+			_arena._build_team_panel()
+			_c("panel is now out of step with the tree", _panel_rows(), 0)
+			_wait = _arena.PANEL_CHECK_INTERVAL + 0.2
 			_phase = 2
 
 		2:
+			_c("the panel repaired itself with no signal to prompt it",
+				_panel_rows(), 2)
+			_phase = 3
+
+		3:
+			# One quits. A teammate is still on their feet, so there is still
+			# a round to play and it must NOT end here.
+			_quit_player(2, "Bee")
+			_phase = 4
+
+		4:
 			# Counted a frame later on purpose: queue_free() does not remove
 			# the node until the end of the frame it was called in, which is
 			# the exact lag this whole test exists for. Asserting in the same
 			# frame would just measure the engine's deletion schedule.
 			_c("one Tubig body remains", _tubigs().size(), 1)
 			_c("match continues with one Tubig left", MatchManager.is_over, false)
-			_phase = 3
+			_phase = 5
 
-		3:
+		5:
 			# The last one quits. Nobody is left to catch, no tag can ever
 			# fire, and nothing else would revisit the question.
 			_quit_player(3, "Cee")
-			_phase = 4
+			_phase = 6
 
-		4:
+		6:
 			_c("no Tubig bodies remain", _tubigs().size(), 0)
 			_c("match ended rather than idling", MatchManager.is_over, true)
 			_c("match stopped running", MatchManager.is_running, false)

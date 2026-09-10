@@ -197,19 +197,15 @@ func _try_tag(body: Node2D) -> void:
 
 	_tag_cooldowns[body] = TAG_RETRY_COOLDOWN
 	tagged_target.emit(body)
-	# The tag sfx and the "Ang anghang!!" callout used to fire here. They now
-	# live on tubig.gd's _on_heat_state_changed, which runs on EVERY peer off
-	# the replicated state - so bystanders still hear a teammate go down, which
-	# they would have lost the moment this function became authority-only. It
-	# also means the sound only plays for a tag the server actually accepted,
-	# rather than optimistically on contact.
+	# Nothing is announced from here. The tag sfx, the callout and the feed line
+	# are all driven by the server accepting the request - the sounds off the
+	# replicated state in tubig.gd's _on_heat_state_changed, the feed line from
+	# HeatStatus._announce_tag. This function only makes the CLAIM.
 	#
-	# The Sili is named now instead of being called "Sili": with the role
-	# rotating every round, "who caught them" is the interesting half of the
-	# line. event_feed.gd colours the whole line by kind ("tag" = red-orange),
-	# so the names themselves are plain text - there's no per-name BBCode to
-	# apply on top of that.
-	MatchManager.broadcast_event("%s tagged %s" % [_own_name(), _name_of(body)], "tag")
+	# That split matters on a bad connection. What this machine sees is a
+	# prediction: the Tubig it is standing on top of may already have run out of
+	# reach on the server's copy of the world. Announcing here published that
+	# prediction to all five screens as fact, once a second for the whole chase.
 
 
 func _update_tag_cooldowns(delta: float) -> void:
@@ -272,14 +268,7 @@ func get_direction_suffix(dir: Vector2) -> String:
 		return "e"
 
 
-## Feed lines use the lobby name so the readout matches the team panel. Falls
-## back to the role when a peer id can't be resolved (offline test sessions).
-func _name_of(character: Node) -> String:
-	if character == null:
-		return "a Tubig"
-	var peer_id := character.get_multiplayer_authority()
-	return NetworkManager.players.get(peer_id, "Tubig")
-
-
+## The name over this Sili's head, matching the lobby name the team panel shows.
+## Falls back to the role when a peer id can't be resolved (offline sessions).
 func _own_name() -> String:
 	return NetworkManager.players.get(get_multiplayer_authority(), "Sili")

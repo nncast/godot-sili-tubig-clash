@@ -163,7 +163,17 @@ func _on_practice_pressed() -> void:
 	NetworkManager.start_practice_match()
 
 
+## Host migration isn't supported (see _on_disconnected), so the host walking out
+## is not the same act as a client walking out - it ends the lobby for everyone
+## still sitting in it. The confirmation says which of the two this is.
 func _on_leave_pressed() -> void:
+	var message := "You'll go back to the title screen."
+	if NetworkManager.is_host():
+		message = "You're hosting. Leaving closes this lobby for everyone in it."
+	ModalDialog.show_confirm("Leave Lobby?", message, "Leave", "Stay", _leave_to_title)
+
+
+func _leave_to_title() -> void:
 	NetworkManager.leave_game()
 	get_tree().change_scene_to_file("res://ui/title_screen/title_screen.tscn")
 

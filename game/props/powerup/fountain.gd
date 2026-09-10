@@ -153,7 +153,10 @@ func _on_speed_changed(_multiplier: float, stage: int) -> void:
 	if is_charged:
 		return  # still holding an undrunk charge; a stage tick doesn't stack them
 	_set_charged_everywhere(true)
-	MatchManager.broadcast_event("The fountain has refilled  [E]", "buff")
+	# The "[E]" is the keycap, not markup - the feed renders BBCode now, so the
+	# bracket has to be escaped or the prompt disappears into an unknown tag.
+	MatchManager.broadcast_event(
+		"The fountain has refilled  %s" % MatchManager.escape_bbcode("[E]"), "buff")
 
 
 func _set_charged_everywhere(value: bool) -> void:
@@ -259,8 +262,13 @@ func _rpc_apply_buff(peer_id: int, kind_index: int, amount: int) -> void:
 	# Broadcast locally rather than through MatchManager.broadcast_event: this
 	# function already runs on every peer, so routing the line through another
 	# RPC would print it once per peer on every screen.
+	# Only a Tubig can reach a fountain (see the header), so the drinker's name is
+	# always the runners' colour.
 	MatchManager.event_logged.emit(
-		"%s drank: %s" % [_name_of(peer_id), _describe(kind_index, amount)], "buff")
+		"%s drank: %s" % [
+			MatchManager.tubig_name(_name_of(peer_id)),
+			_describe(kind_index, amount),
+		], "buff")
 
 
 func _describe(kind: int, amount: int) -> String:

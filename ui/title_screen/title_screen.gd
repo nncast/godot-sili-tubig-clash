@@ -71,6 +71,10 @@ func _ready() -> void:
 	status_label.text = ""
 	join_status.text = ""
 
+	# Whatever they called themselves last time, already filled in - see
+	# _resolved_name() for where it gets written.
+	name_edit.text = GameSettings.player_name
+
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
 	how_to_button.pressed.connect(_on_how_to_pressed)
@@ -344,9 +348,16 @@ func _on_settings_pressed() -> void:
 	get_tree().change_scene_to_file("res://ui/settings/settings.tscn")
 
 
+## Every way into a game - Host, Join by code, Join by IP, Auto Join - resolves
+## the name through here, which makes this the one place that knows a name was
+## actually committed to something rather than just typed and abandoned. That is
+## why the save lives here instead of on the field's text_changed.
 func _resolved_name() -> String:
 	var typed := name_edit.text.strip_edges()
-	return typed if not typed.is_empty() else "Player%d" % (randi() % 1000)
+	if typed.is_empty():
+		return "Player%d" % (randi() % 1000)
+	GameSettings.set_player_name(typed)
+	return typed
 
 
 ## Helper to close all panels at once

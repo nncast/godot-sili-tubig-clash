@@ -178,6 +178,11 @@ const READY_TIMEOUT: float = 20.0
 
 var _round_launched: bool = false
 
+## True while the HUD's own panels are shut out - see _set_hud_locked(). Held as
+## state rather than read off MatchManager each time because the guide answers to
+## a hotkey as well as a button, and both have to consult the same answer.
+var _hud_locked: bool = false
+
 
 func _on_arena_peer_ready(_peer_id: int) -> void:
 	_try_launch_round()
@@ -229,11 +234,39 @@ func _setup_settings_popup() -> void:
 	close_settings_button.pressed.connect(func(): settings_popup.visible = false)
 	leave_game_button.pressed.connect(_on_leave_game_pressed)
 
+	# The HUD is shut while the countdown runs. See _set_hud_locked - the round is
+	# already on screen during the role reveal, so without this the Settings
+	# panel opens over the top of it.
+	#
+	# Unlocked on match_started, NOT on pregame_finished: pregame_finished is
+	# emitted only `if was_pregame`, so a match with PREGAME_DURATION set to 0
+	# goes straight to _rpc_start_match and never sends it - and a lock released
+	# by a signal that never arrives is a HUD nobody can open for the whole
+	# round. match_started fires on both paths.
+	MatchManager.pregame_started.connect(func(_duration: float): _set_hud_locked(true))
+	MatchManager.match_started.connect(func(): _set_hud_locked(false))
+	# A peer whose arena finished building after the countdown had already begun
+	# never saw pregame_started, so take the current state rather than assuming
+	# this scene is older than the match. Offline harnesses run no match at all
+	# and want the HUD live from the start.
+	_set_hud_locked(MatchManager.is_pregame)
+
 
 ## The only way out of a match once it's started - the title screen's own Exit
 ## button doesn't reach here, and a host or client stuck mid-round (say, the
 ## other side of a dead connection) had no way back except force-quitting.
+##
+## Confirmed rather than immediate because it sits one click inside the Settings
+## popup, next to four volume sliders: the hand that went in there to turn the
+## music down should not be able to end four other people's round by a pixel.
 func _on_leave_game_pressed() -> void:
+	var message := "The round keeps going without you, and you'll go back to the title screen."
+	if NetworkManager.is_host():
+		message = "You're hosting. Leaving ends this match for everyone in it."
+	ModalDialog.show_confirm("Leave Match?", message, "Leave", "Stay", _leave_match)
+
+
+func _leave_match() -> void:
 	NetworkManager.leave_game()
 	LoadingScreen.change_scene("res://ui/title_screen/title_screen.tscn")
 
@@ -247,11 +280,42 @@ func _setup_guide() -> void:
 
 
 func _toggle_guide() -> void:
+	if _hud_locked:
+		return
 	guide_panel.visible = not guide_panel.visible
 	guide_button.visible = not guide_panel.visible
 
 
+## Shuts the HUD's own panels while the round is still counting in.
+##
+## The arena is fully built and visible during the role reveal and the 5-second
+## countdown - the players just can't move yet - so every HUD control was live
+## before the match was. You could sit in the Settings panel through the whole
+## countdown, and be looking at a volume slider instead of at which role you had
+## just been given.
+##
+## Both entry points to each panel are covered, not just the buttons: the guide
+## also answers to F1/H, and a disabled button that a hotkey still opens is not
+## disabled. Anything already open is closed rather than frozen in place, since
+## the reveal is the one thing that should be on screen at that moment.
+func _set_hud_locked(locked: bool) -> void:
+	_hud_locked = locked
+
+	settings_button.disabled = locked
+	guide_button.disabled = locked
+
+	if locked:
+		settings_popup.visible = false
+		guide_panel.visible = false
+		guide_button.visible = true
+		# A button that keeps focus can still be fired with Enter or Space while
+		# it is disabled-looking, which is the same bug one layer down.
+		get_viewport().gui_release_focus()
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if _hud_locked:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F1 or event.keycode == KEY_H:
 			_toggle_guide()

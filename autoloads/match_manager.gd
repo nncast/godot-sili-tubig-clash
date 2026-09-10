@@ -96,6 +96,47 @@ func _tick_sili_slow(delta: float) -> void:
 		_slow_factor = 1.0
 
 
+## --- Feed names -----------------------------------------------------------
+##
+## Feed lines name the player rather than the role ("Ana tagged Ben"), which
+## only helps if you can tell at a glance which side each name is on - with the
+## Sili rotating every round, "Ana" alone doesn't say whether Ana is the one
+## doing the catching this time. So each name carries its own side's colour and
+## the words between them stay in the line's kind colour, which is the half that
+## already says whether this was a tag or a rescue.
+##
+## Stored without the leading "#" so callers can build "[color=#%s]" directly.
+const FEED_SILI_COLOR := "ff8a72"
+const FEED_TUBIG_COLOR := "6fd8ff"
+
+
+## Names are typed by players and the feed renders BBCode, so a player calling
+## themselves "[color=red]" would be writing markup straight into everybody
+## else's HUD. "[lb]" is the engine's own escape for a left bracket, so an
+## escaped name still shows the bracket on screen rather than swallowing it.
+##
+## Only "[" needs escaping - a "]" with nothing open in front of it is already
+## inert - and this must run BEFORE any colour tag is wrapped around the name,
+## or it would escape the tag the game itself just added.
+func escape_bbcode(text: String) -> String:
+	return text.replace("[", "[lb]")
+
+
+func sili_name(player_name: String) -> String:
+	return "[color=#%s]%s[/color]" % [FEED_SILI_COLOR, escape_bbcode(player_name)]
+
+
+func tubig_name(player_name: String) -> String:
+	return "[color=#%s]%s[/color]" % [FEED_TUBIG_COLOR, escape_bbcode(player_name)]
+
+
+## For the places that log about a player without already knowing which helper
+## to reach for - somebody leaving, say, where the only thing to hand is the
+## role table. Anything that isn't the Sili is a Tubig, which is four of the five.
+func name_for_role(role: String, player_name: String) -> String:
+	return sili_name(player_name) if role == "sili" else tubig_name(player_name)
+
+
 ## Any peer may report an event; it's a cosmetic feed, so there's nothing worth
 ## validating on the server and no reason to make clients round-trip for it.
 @rpc("any_peer", "call_local", "reliable")

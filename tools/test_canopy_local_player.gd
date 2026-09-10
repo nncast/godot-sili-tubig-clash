@@ -28,6 +28,9 @@ var _phase := 0
 ## which is comfortably more than one physics tick at any sane frame rate.
 const SETTLE_FRAMES := 20
 var _settle := 0
+## One-shot: the absent peer only has to check in once, and re-reporting every
+## frame would keep resetting the settle countdown that waits for the spawn.
+var _peers_reported := false
 var _canopy: TileMapLayer = null
 var _sili: Node2D = null
 var _faded_alpha_seen: float = 1.0
@@ -66,6 +69,17 @@ func _process(_delta: float) -> void:
 	_frame += 1
 	if _frame < 6:
 		return
+	# "Bee" is registered in the lobby but has no real peer behind her, and
+	# arena.gd holds the round until everyone in NetworkManager.players reports
+	# their scene built (see report_arena_ready). Standing in for her here is
+	# what lets the round launch now instead of after READY_TIMEOUT, twenty
+	# seconds from now, with this test long finished.
+	if not _peers_reported:
+		_peers_reported = true
+		NetworkManager._record_arena_ready(2)
+		_settle = 3
+		return
+
 	if _settle > 0:
 		_settle -= 1
 		return

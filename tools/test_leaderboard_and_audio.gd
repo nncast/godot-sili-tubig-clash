@@ -14,6 +14,9 @@ var _arena: Node = null
 var _frame := 0
 var _phase := 0
 var _settle := 0
+## One-shot: the absent peers only check in once, and re-reporting every frame
+## would keep resetting the settle countdown that waits for the spawn.
+var _peers_reported := false
 
 
 func _c(label: String, actual: Variant, expected: Variant) -> void:
@@ -207,6 +210,17 @@ func _process(_delta: float) -> void:
 	_frame += 1
 	if _frame < 8:
 		return
+	# Peers 2-4 are in the lobby but have no real connection behind them, and
+	# arena.gd holds the round until every one of them reports its arena scene
+	# built (see report_arena_ready). Standing in for them is what lets the round
+	# launch - and the players spawn - before READY_TIMEOUT twenty seconds later.
+	if not _peers_reported:
+		_peers_reported = true
+		for peer_id in [2, 3, 4]:
+			NetworkManager._record_arena_ready(peer_id)
+		_settle = 3
+		return
+
 	if _settle > 0:
 		_settle -= 1
 		return

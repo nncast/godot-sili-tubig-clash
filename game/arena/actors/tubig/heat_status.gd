@@ -175,35 +175,44 @@ func _process(delta: float) -> void:
 ## the state can never disagree: the old version deducted the heart on the
 ## tagged player's client in response to the replicated state change, which
 ## meant two different peers owned two halves of one rule.
-func ignite() -> void:
+## Returns whether the tag actually landed. Callers use that to decide whether
+## anything should be ANNOUNCED - see request_ignite(). A tag that hits someone
+## already burning, already dead, or still inside their rescue immunity is a
+## real miss, and the feed must not claim otherwise.
+func ignite() -> bool:
 	if state != State.NORMAL:
-		return  # already Burning or Dead, a fresh tag does nothing
+		return false  # already Burning or Dead, a fresh tag does nothing
 	if is_immune:
-		return  # just rescued - the tag lands on nothing and costs no heart
+		return false  # just rescued - the tag lands on nothing and costs no heart
 
 	lives_left = max(0, lives_left - 1)
 
 	if lives_left <= 0:
 		_burn_elapsed = 0.0
 		state = State.DEAD
-		return
+		return true
 
 	_burn_elapsed = 0.0
 	state = State.BURNING
+	return true
 
 
 ## Called on rescue completion. Same server-only rule as ignite(). Rescuing a
 ## Dead player isn't possible (see is_burning(), which rescue targeting uses),
 ## so this only ever runs against someone still Burning.
-func cool_fully() -> void:
+## Returns whether the rescue actually freed anybody, for the same reason
+## ignite() does: two Tubig finishing a channel on the same target a frame apart
+## is normal under lag, and only the first of them rescued anyone.
+func cool_fully() -> bool:
 	if state != State.BURNING:
-		return
+		return false
 	# Granted BEFORE the state flip so that any listener reacting to `cooled`
 	# on this machine already sees is_immune true, rather than reading a window
 	# that opens a frame later.
 	_immunity_remaining = RESCUE_IMMUNITY_TIME
 	is_immune = true
 	state = State.NORMAL
+	return true
 
 
 ## The burn timed out with nobody saving them - permanent, no more rescues.
@@ -256,7 +265,8 @@ const RESCUE_RANGE: float = 40.0
 @rpc("any_peer", "call_local", "reliable")
 func request_ignite() -> void:
 	if not _is_networked():
-		ignite()
+		if ignite():
+			_announce_tag(_local_peer_id())
 		return
 	if not multiplayer.is_server():
 		return
@@ -269,13 +279,15 @@ func request_ignite() -> void:
 		push_warning("HeatStatus: ignite from peer %d out of tag range - rejected." % sender)
 		return
 
-	ignite()
+	if ignite():
+		_announce_tag(sender)
 
 
 @rpc("any_peer", "call_local", "reliable")
 func request_cool_fully() -> void:
 	if not _is_networked():
-		cool_fully()
+		if cool_fully():
+			_announce_rescue(_local_peer_id())
 		return
 	if not multiplayer.is_server():
 		return
@@ -301,11 +313,14 @@ func request_cool_fully() -> void:
 		push_warning("HeatStatus: rescue from peer %d out of range - rejected." % sender)
 		return
 
-	cool_fully()
-	# Credited only after every check above has passed, so the scoreboard
-	# counts rescues that actually landed rather than rescues that were
-	# claimed. This is the only place a rescue point can be earned.
-	SeriesManager.credit_rescue(sender)
+	# Credited only after every check above has passed AND only if the channel
+	# actually freed somebody, so the scoreboard counts rescues that landed
+	# rather than rescues that were claimed. This is the only place a rescue
+	# point can be earned. Two rescuers finishing on the same target a frame
+	# apart used to score twice for one save.
+	if cool_fully():
+		_announce_rescue(sender)
+		SeriesManager.credit_rescue(sender)
 
 
 ## There is deliberately no request_die() RPC any more. Elimination used to be
@@ -314,6 +329,58 @@ func request_cool_fully() -> void:
 ## heart itself, on the server, and the burn timeout in _process() handles the
 ## rest - so the network surface for "put a player out of the match" is gone
 ## rather than merely guarded.
+
+
+## --- Feed lines -----------------------------------------------------------
+##
+## Both live here, on the server, next to the validation - NOT on the acting
+## player's client where they used to be.
+##
+## The old placement (sili.gd's _try_tag, tubig.gd's _complete_rescue) wrote the
+## line the instant the local client THOUGHT it had connected, one frame before
+## the request even left the machine. On a good connection the server agreed and
+## nobody noticed. On a hotspot it produced exactly the reported bug: the Sili's
+## screen shows a tag, the Tubig's screen shows them getting away, the server
+## sides with the Tubig - and the feed still announced a tag that never
+## happened. Once per second per target, for as long as the chase lasts, which
+## is what buried the feed.
+##
+## Announcing from here means a line is written once, by the one machine that
+## decides the outcome, and only when the outcome actually changed. A rejected
+## claim now costs a push_warning and nothing else.
+func _announce_tag(tagger_id: int) -> void:
+	MatchManager.broadcast_event("%s tagged %s" % [
+		MatchManager.sili_name(_peer_name(tagger_id, "Sili")),
+		MatchManager.tubig_name(_victim_name()),
+	], "tag")
+
+
+## Both names are Tubig here - a rescue is one runner reaching another, so the
+## line is blue on both ends and only the verb changes colour with the kind.
+func _announce_rescue(rescuer_id: int) -> void:
+	MatchManager.broadcast_event("%s rescued %s" % [
+		MatchManager.tubig_name(_peer_name(rescuer_id, "Tubig")),
+		MatchManager.tubig_name(_victim_name()),
+	], "rescue")
+
+
+func _peer_name(peer_id: int, fallback: String) -> String:
+	return NetworkManager.players.get(peer_id, fallback)
+
+
+## This node hangs off the Tubig it belongs to, so the owner of the body is the
+## player every line here is about.
+func _victim_name() -> String:
+	var body := get_parent()
+	if body == null:
+		return "Tubig"
+	return _peer_name(body.get_multiplayer_authority(), "Tubig")
+
+
+## Offline (the tools/ harnesses, and a single-machine practice run) has no
+## sender to read - the only player there is this one.
+func _local_peer_id() -> int:
+	return multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1
 
 
 ## The sender as the multiplayer layer reports it. call_local means the server

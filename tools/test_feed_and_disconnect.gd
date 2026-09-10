@@ -98,6 +98,15 @@ func _process(_delta: float) -> void:
 			_c("the bracket still displays",
 				MatchManager.escape_bbcode("[img]"), "[lb]img]")
 
+			# --- Let the other three finish loading ---
+			# arena.gd holds the round until every peer in NetworkManager.players
+			# has reported its own arena scene built (see report_arena_ready), and
+			# peer 1 is the only one that actually exists here. Without standing
+			# in for the other three, nothing spawns until READY_TIMEOUT - twenty
+			# seconds after this test has finished running.
+			for peer_id in [2, 3, 4]:
+				NetworkManager._record_arena_ready(peer_id)
+			_settle = 3
 			_phase = 1
 			return
 

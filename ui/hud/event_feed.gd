@@ -53,12 +53,27 @@ func _on_event_logged(message: String, kind: String) -> void:
 	push_entry(message, color)
 
 
+## RichTextLabel rather than Label because the names inside a line carry their
+## own colour - see MatchManager.sili_name/tubig_name. `color` is still the
+## line's colour: it becomes default_color, which is what every word OUTSIDE a
+## [color] tag uses, so a line still reads as a tag or a rescue at a glance and
+## the names sit on their own side's colour within it.
 func push_entry(message: String, color: Color) -> void:
-	var label := Label.new()
-	label.text = message
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	label.add_theme_font_size_override("font_size", ENTRY_FONT_SIZE)
-	label.add_theme_color_override("font_color", color)
+	var label := RichTextLabel.new()
+	label.bbcode_enabled = true
+	# RichTextLabel has no horizontal_alignment property - alignment is markup
+	# here, so the line gets wrapped rather than a flag set on the node.
+	label.text = "[right]%s[/right]" % message
+	# Sizes to its text instead of claiming a stretch of empty column, and never
+	# grows a scrollbar: the feed is five short lines, not a document.
+	label.fit_content = true
+	label.scroll_active = false
+	# A Label ignores the mouse by default and a RichTextLabel does not. Without
+	# this the feed would quietly swallow every click in that corner of the play
+	# area - the VBox above opts itself out but that does not cover its children.
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("normal_font_size", ENTRY_FONT_SIZE)
+	label.add_theme_color_override("default_color", color)
 	# Outline instead of a panel background: the feed sits over the tilemap, and
 	# these have to stay readable against both bright sand and dark buildings.
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))

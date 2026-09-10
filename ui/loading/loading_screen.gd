@@ -45,7 +45,21 @@ const TUBIG_SHEET := "res://game/assets/art/characters/16x16 Tubig.png"
 ## rather than via the .import setting: the .import's loop flag only takes
 ## effect on a reimport, the same gotcha AudioManager.load_looping_wav works
 ## around for its .wav loops.
+##
+## It plays on the MUSIC bus at AudioManager.MUSIC_DB, not on SFX. It is a music
+## cue - it replaces the track for the length of the transition - and on SFX it
+## was landing about 23 dB hot next to everything it transitions between: the
+## SFX bus carries its own boost, the sfx voices play at 0 dB, and the music
+## players sit at -20. It also means the player's Music slider governs it, which
+## is the slider they would reach for to turn this exact sound down.
 const LOADING_LOOP_SFX := "res://game/assets/audio/sfx/sili-sili-tubig-tubig_loading.ogg"
+
+## Asymmetric on purpose, and both slower than the curtain's own 0.25s visual
+## fade. A cut to silence is audible in a way a cut to transparent is not, and
+## the tail is the longer of the two because it overlaps the incoming scene's
+## music coming up underneath it.
+const LOOP_FADE_IN := 0.35
+const LOOP_FADE_OUT := 0.5
 
 ## Pixel art at 24px would be a smudge on a 1080p screen; 4x keeps it crisp
 ## because the project renders with nearest-neighbour filtering.
@@ -76,6 +90,9 @@ var _label: Label = null
 var _sili: AnimatedSprite2D = null
 var _tubig: AnimatedSprite2D = null
 var _loop_player: AudioStreamPlayer = null
+## Held so a curtain raised again before the previous fade-out finished can kill
+## the old tween instead of leaving two of them writing volume_db at once.
+var _loop_tween: Tween = null
 
 var _busy: bool = false
 var _run_offset: float = 0.0
@@ -194,13 +211,23 @@ func _load_threaded(path: String) -> Resource:
 
 
 func _fade_out() -> void:
+	if _loop_tween and _loop_tween.is_valid():
+		_loop_tween.kill()
+
 	var tween := create_tween()
 	# The result overlay drops Engine.time_scale to 0.25 for its slow-motion
 	# finish. It restores it before advancing, but a dropped frame or an early
 	# exit path can leave the slowdown in place for a moment - and a fade that
 	# inherits it takes a second to clear instead of a quarter of one.
 	tween.set_ignore_time_scale(true)
+	# Parallel so the longer audio tail can outrun the picture: awaiting a
+	# parallel tween waits for its slowest tweener, so the voice is silent by the
+	# time _set_visible(false) stops it and there is no cut at the end.
+	tween.set_parallel(true)
 	tween.tween_property(_root, "modulate:a", 0.0, FADE_OUT_TIME)
+	if _loop_player and _loop_player.playing:
+		tween.tween_property(
+			_loop_player, "volume_db", GameSettings.MIN_DB, LOOP_FADE_OUT)
 	await tween.finished
 	_set_visible(false)
 	_root.modulate.a = 1.0
@@ -209,6 +236,11 @@ func _fade_out() -> void:
 func _set_visible(shown: bool) -> void:
 	_root.visible = shown
 	if shown:
+		# The dim plate stops the MOUSE reaching the scene underneath, but a
+		# button that still holds focus answers Enter and Space right through
+		# it - so the Start button you just clicked can be fired a second time
+		# while the curtain that is meant to have retired it is on screen.
+		get_viewport().gui_release_focus()
 		_run_offset = 0.0
 		_dot_timer = 0.0
 		_dot_count = 0
@@ -254,8 +286,9 @@ func _build() -> void:
 	add_child(_root)
 
 	_loop_player = AudioStreamPlayer.new()
-	_loop_player.name = "LoopSFX"
-	_loop_player.bus = "SFX"
+	_loop_player.name = "LoopMusic"
+	_loop_player.bus = "Music"
+	_loop_player.volume_db = GameSettings.MIN_DB
 	add_child(_loop_player)
 
 	var dim := ColorRect.new()
@@ -309,8 +342,13 @@ func _build() -> void:
 
 ## Missing-file-safe, like every other sfx in the game: a curtain with no
 ## sound is a worse bug than a curtain with no jingle.
+##
+## Deliberately does NOT early-return on `playing`. A second curtain can go up
+## while the first one's tail is still fading, and in that state the voice is
+## playing but on its way to silence - bailing out here would leave the whole
+## next transition running at whatever level the fade had reached.
 func _play_loop_sfx() -> void:
-	if _loop_player == null or _loop_player.playing:
+	if _loop_player == null:
 		return
 	if not ResourceLoader.exists(LOADING_LOOP_SFX):
 		return
@@ -319,7 +357,19 @@ func _play_loop_sfx() -> void:
 		if stream is AudioStreamOggVorbis:
 			stream.loop = true
 		_loop_player.stream = stream
-	_loop_player.play()
+
+	if _loop_tween and _loop_tween.is_valid():
+		_loop_tween.kill()
+	if not _loop_player.playing:
+		_loop_player.volume_db = GameSettings.MIN_DB
+		_loop_player.play()
+
+	_loop_tween = create_tween()
+	# The result overlay runs the end of a match at 0.25x time_scale, and a round
+	# can advance straight from there into this curtain - see _fade_out().
+	_loop_tween.set_ignore_time_scale(true)
+	_loop_tween.tween_property(
+		_loop_player, "volume_db", AudioManager.MUSIC_DB, LOOP_FADE_IN)
 
 
 func _make_runner(sheet_path: String) -> AnimatedSprite2D:

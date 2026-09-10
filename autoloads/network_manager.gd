@@ -419,6 +419,10 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 
 	var who: String = players[id]
+	# Read before the erase below: the feed colours a name by the side that
+	# player was on, and by the time the line is built the role table no longer
+	# knows they existed.
+	var role: String = roles.get(id, "")
 	players.erase(id)
 	roles.erase(id)
 
@@ -426,7 +430,8 @@ func _on_peer_disconnected(id: int) -> void:
 		_rpc_update_player_list.rpc(players)
 	player_list_changed.emit()
 
-	MatchManager.event_logged.emit("%s left the game" % who, "warning")
+	MatchManager.event_logged.emit(
+		"%s left the game" % MatchManager.name_for_role(role, who), "warning")
 	player_left.emit(id, who)
 
 

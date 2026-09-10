@@ -1,7 +1,8 @@
 extends Node
 
 ## Autoload. Owns the persisted audio settings so they apply at boot
-## (not just while the settings screen happens to be open).
+## (not just while the settings screen happens to be open), plus the last
+## name the player entered on the title screen.
 
 const SETTINGS_PATH := "user://settings.cfg"
 const MIN_DB := -80.0
@@ -34,6 +35,12 @@ var sfx_volume: float = DEFAULT_SFX
 ## waves without touching footsteps or UI blips.
 var ambience_volume: float = DEFAULT_AMBIENCE
 
+## The last name the player actually committed to a game with. Empty until they
+## type one - a blank field falls back to a throwaway "Player123" per session,
+## and remembering THAT would silently freeze a random number as someone's
+## identity forever.
+var player_name: String = ""
+
 
 func _ready() -> void:
 	load_settings()
@@ -50,6 +57,7 @@ func load_settings() -> void:
 		# slider reset to full every launch while the file quietly held the
 		# player's real choice.
 		ambience_volume = config.get_value("audio", "ambience", DEFAULT_AMBIENCE)
+		player_name = config.get_value("player", "name", "")
 	_apply_bus("Master", master_volume)
 	_apply_bus("Music", music_volume)
 	_apply_bus("SFX", sfx_volume)
@@ -62,6 +70,10 @@ func save_settings() -> void:
 	config.set_value("audio", "music", music_volume)
 	config.set_value("audio", "sfx", sfx_volume)
 	config.set_value("audio", "ambience", ambience_volume)
+	# ConfigFile.save() rewrites the whole file, so the name has to be written on
+	# every save - including the ones a volume slider triggers - or moving a
+	# slider would quietly erase it.
+	config.set_value("player", "name", player_name)
 	config.save(SETTINGS_PATH)
 
 
@@ -80,6 +92,14 @@ func set_music_volume(value: float) -> void:
 func set_sfx_volume(value: float) -> void:
 	sfx_volume = value
 	_apply_bus("SFX", value)
+	save_settings()
+
+
+func set_player_name(value: String) -> void:
+	var trimmed := value.strip_edges()
+	if trimmed == player_name:
+		return
+	player_name = trimmed
 	save_settings()
 
 

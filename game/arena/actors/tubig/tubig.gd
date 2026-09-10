@@ -365,9 +365,11 @@ func _complete_rescue() -> void:
 				target_heat.cool_fully()
 		_send_rescue_progress(_rescue_target, 0.0, 0.0)
 
-	MatchManager.broadcast_event(
-		"%s rescued %s" % [_own_name(), _name_of(_rescue_target)], "rescue")
-
+	# The "X rescued Y" line is written by the server in HeatStatus, once the
+	# rescue has actually been validated and has actually freed somebody - same
+	# reason sili.gd no longer announces its own tags. Announcing here printed a
+	# line for a channel that finished against a target the server had already
+	# let burn out, or that a closer teammate had already saved.
 	_cancel_rescue_channel()
 
 

@@ -260,9 +260,17 @@ func _finish_bake(image: Image, world_origin: Vector2, world_size: Vector2) -> v
 
 ## Told by the arena which character belongs to this peer, so the map knows
 ## which set of dots it's allowed to show.
+##
+## A null `local_player` is not treated as "there is nobody" - arena.gd calls
+## this from _refresh_team_state(), which fires on every spawn, so the early
+## calls legitimately land before this peer's own body exists. Keeping a body
+## we already resolved (and asking _refresh_entities to look again when we
+## haven't) is what stops one of those early calls from blanking the map for
+## the rest of the round.
 func configure(local_player: Node2D, is_sili: bool) -> void:
-	_local_player = local_player
 	_local_is_sili = is_sili
+	if local_player != null:
+		_local_player = local_player
 	_refresh_entities()
 	queue_redraw()
 
@@ -279,6 +287,26 @@ func _process(delta: float) -> void:
 func _refresh_entities() -> void:
 	_tubig_players = get_tree().get_nodes_in_group("tubig")
 	_sili_player = get_tree().get_first_node_in_group("sili")
+	# Self-heal, every ENTITY_REFRESH_INTERVAL. Without it the map depends
+	# entirely on configure() having been called at a moment when this peer's
+	# own body already existed, and a Sili whose body landed after the last
+	# such call spent the whole round unable to see EITHER their own dot or
+	# any Tubig in their camera - _draw_for_sili() needs _local_player for
+	# both, since _local_camera() reads it too.
+	if not is_instance_valid(_local_player):
+		_local_player = _find_own_body()
+
+
+## This peer's own character, found by authority rather than by node path.
+## Character bodies get set_multiplayer_authority(peer_id) in arena.gd's
+## _build_player, so the body whose authority is our own id is ours - the same
+## way heat_status.gd resolves a peer's body.
+func _find_own_body() -> Node2D:
+	var my_id := multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 1
+	for body in get_tree().get_nodes_in_group("sili" if _local_is_sili else "tubig"):
+		if is_instance_valid(body) and body.get_multiplayer_authority() == my_id:
+			return body
+	return null
 
 
 func _on_sili_spotted_changed(_is_spotted: bool) -> void:

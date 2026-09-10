@@ -67,9 +67,15 @@ const SLOW_FACTOR := 0.75      ## Sili keeps 75% of its current speed
 const SLOW_DURATION := 8.0
 const STAMINA_DURATION := 10.0
 
-## Editor + in-game tint for the basin, so "ready" is readable in-world and not
-## only in the feed. A player looking at the fountain should be able to tell.
-const READY_TINT := Color(0.62, 0.93, 1.0)
+## Tint for the drained basin, so "spent" is readable in-world and not only in
+## the feed. A player looking at the fountain should be able to tell.
+##
+## There is no matching READY tint any more. The fountain now ships two whole
+## art variants - "active" and "inactive" in fountain.tscn - and swaps which
+## one is visible, so the ART carries the state and the charged variant is
+## shown exactly as it was authored rather than washed with a colour. The tint
+## stays on the inactive one, where it still does work: it reads as drained
+## rather than merely as a different bowl.
 const SPENT_TINT := Color(0.55, 0.58, 0.62)
 
 signal charged_changed(is_charged: bool)
@@ -80,7 +86,7 @@ var is_charged: bool = false:
 			return
 		is_charged = value
 		charged_changed.emit(value)
-		_apply_tint()
+		_apply_visual_state()
 
 var _area: Area2D = null
 
@@ -88,7 +94,7 @@ var _area: Area2D = null
 func _ready() -> void:
 	add_to_group("fountain")
 	_build_interaction_area()
-	_apply_tint()
+	_apply_visual_state()
 
 	# Every peer connects, but only the server acts on it - see _on_speed_changed.
 	# Clients still need the signal for nothing at all, so the guard lives in the
@@ -269,16 +275,23 @@ func _describe(kind: int, amount: int) -> String:
 	return "a blessing"
 
 
-## Tints both TileMapLayers rather than the whole node, so the fountain reads
-## as charged/spent from every angle - including the "top" splash layer that
-## draws above whoever is standing at the basin. Only the RGB channels are
-## touched: "top" also carries canopy_fade.gd, which drives modulate.a on its
-## own WHOLE-mode fade (see its _push_blend()) and depends on this leaving that
-## alone rather than stamping a full Color over it every charge/spend.
-func _apply_tint() -> void:
-	var tint := READY_TINT if is_charged else SPENT_TINT
-	_tint_layer(get_node_or_null("bottom"), tint)
-	_tint_layer(get_node_or_null("top"), tint)
+## Swaps which whole art variant is showing - "active" (drinkable) or
+## "inactive" (drained) - and keeps the tint on the inactive one so a drained
+## fountain reads as drained rather than merely as a second bowl design.
+##
+## Only the RGB channels are touched on the tint: "top" under each variant
+## also carries canopy_fade.gd, which drives modulate.a on its own WHOLE-mode
+## fade (see its _push_blend()) and depends on this leaving that alone rather
+## than stamping a full Color over it every charge/spend.
+func _apply_visual_state() -> void:
+	var active := get_node_or_null("active")
+	var inactive := get_node_or_null("inactive")
+	if active:
+		active.visible = is_charged
+	if inactive:
+		inactive.visible = not is_charged
+		_tint_layer(inactive.get_node_or_null("bottom"), SPENT_TINT)
+		_tint_layer(inactive.get_node_or_null("top"), SPENT_TINT)
 
 
 func _tint_layer(layer: CanvasItem, tint: Color) -> void:

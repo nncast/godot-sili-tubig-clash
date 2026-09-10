@@ -124,6 +124,7 @@ max_length = 10
 [node name="HostButton" type="Button" parent="VBox" unique_id=913935459]
 layout_mode = 2
 theme_type_variation = &"FlatButton"
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Host Game"
 flat = true
@@ -131,6 +132,7 @@ flat = true
 [node name="JoinButton" type="Button" parent="VBox" unique_id=100553706]
 layout_mode = 2
 theme_type_variation = &"FlatButton"
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Join Game"
 flat = true
@@ -138,6 +140,7 @@ flat = true
 [node name="HowToButton" type="Button" parent="VBox" unique_id=418277301]
 layout_mode = 2
 theme_type_variation = &"FlatButton"
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "How to Play"
 flat = true
@@ -145,6 +148,7 @@ flat = true
 [node name="SettingsButton" type="Button" parent="VBox" unique_id=316910047]
 layout_mode = 2
 theme_type_variation = &"FlatButton"
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Settings"
 flat = true
@@ -152,6 +156,7 @@ flat = true
 [node name="ExitButton" type="Button" parent="VBox" unique_id=2003637775]
 layout_mode = 2
 theme_type_variation = &"FlatButton"
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("2_ffat2")
 text = "Exit"
 flat = true
@@ -167,6 +172,7 @@ offset_top = 16.0
 offset_right = 156.0
 offset_bottom = 50.0
 theme_type_variation = &"FlatButton"
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("2_ffat2")
 theme_override_font_sizes/font_size = 18
 text = "Leaderboard"
@@ -177,6 +183,7 @@ anchors_preset = 0
 script = ExtResource("3_lboard")
 
 [node name="JoinPanel" type="Control" parent="." unique_id=1759550424]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0

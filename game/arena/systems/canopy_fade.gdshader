@@ -34,7 +34,7 @@ uniform float fade_radius = 0.0;
 // canopy_fade.gd overwrites this on every layer at _ready(); the value here is
 // only what a layer would show if the script were detached. Kept in step with
 // the script's default so the two can't tell different stories.
-uniform float faded_alpha : hint_range(0.0, 1.0) = 0.15;
+uniform float faded_alpha : hint_range(0.0, 1.0) = 0.80
 
 // Eased 0..1, driven from GDScript so the fade timing stays where it was.
 uniform float blend : hint_range(0.0, 1.0) = 0.0;

@@ -43,6 +43,14 @@ signal burn_time_changed(seconds_left: int)
 var _burn_elapsed: float = 0.0
 var _immunity_remaining: float = 0.0
 
+## Elapsed match time (seconds since the round's clock started) the last time
+## this Tubig left NORMAL - tagged into Burning, or straight into Dead on a
+## last heart. Scoring reads this for anyone who ends the round caught, so
+## someone who lasted well into the match before finally going down scores
+## more than someone caught in the first few seconds, instead of both flatly
+## getting nothing. -1 until it happens once (never tagged this round).
+var elapsed_at_last_tag: float = -1.0
+
 ## Replicated for the same reason `state` is, plus one of its own: the Sili's
 ## hit detection runs on the Sili's OWN client (see sili.gd's _try_tag), so if
 ## immunity only existed on the server the Sili would hear the tag sound, see
@@ -102,6 +110,12 @@ var state: State = State.NORMAL:
 		state = value
 		if value == previous:
 			return
+		# Only a fresh catch (leaving NORMAL) counts as "the last tag" - the
+		# later Burning -> Dead timeout is the same catch running out the
+		# clock, not a new one, so it must not overwrite the moment scoring
+		# actually cares about.
+		if previous == State.NORMAL and value != State.NORMAL:
+			elapsed_at_last_tag = MatchManager.MATCH_DURATION - MatchManager.time_remaining
 		state_changed.emit(value)
 		if value == State.BURNING:
 			burned.emit()
@@ -109,6 +123,16 @@ var state: State = State.NORMAL:
 			cooled.emit()
 		elif value == State.DEAD:
 			died.emit()
+
+
+## How much of the match this Tubig was free before being finally caught, as a
+## 0..1 fraction - what scoring scales survival points by. 1.0 (full credit)
+## if this round never actually caught them, which covers both "never tagged"
+## and the caller not bothering to check is_incapacitated() first.
+func survived_fraction() -> float:
+	if elapsed_at_last_tag < 0.0 or MatchManager.MATCH_DURATION <= 0.0:
+		return 1.0
+	return clampf(elapsed_at_last_tag / MatchManager.MATCH_DURATION, 0.0, 1.0)
 
 
 func _process(delta: float) -> void:

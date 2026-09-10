@@ -79,9 +79,9 @@ metadata/_edit_use_anchors_ = true
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -874.0
+offset_left = -902.0
 offset_top = 620.0
-offset_right = -750.0
+offset_right = -778.0
 offset_bottom = 644.0
 grow_horizontal = 0
 theme_override_constants/separation = 6
@@ -150,12 +150,19 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -304.0
-offset_top = -8.0
+offset_top = -6.0
 offset_right = -240.0
-offset_bottom = 56.0
+offset_bottom = 58.0
 grow_horizontal = 0
 tooltip_text = "Controls guide  (F1 / H)"
-theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.43529412, 0.43529412, 0.4862745, 1)
+theme_override_colors/font_focus_color = Color(1, 0.92, 0.62, 1)
+theme_override_colors/font_pressed_color = Color(0.43529412, 0.43529412, 0.4862745, 1)
+theme_override_colors/font_hover_color = Color(0.43529412, 0.43529412, 0.4862745, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.43529412, 0.43529412, 0.4862745, 1)
+theme_override_colors/font_outline_color = Color(1, 1, 1, 1)
+theme_override_constants/outline_size = 7
+theme_override_font_sizes/font_size = 40
 text = "?"
 flat = true
 
@@ -206,10 +213,12 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -140.0
-offset_top = -85.0
+offset_left = -141.0
+offset_top = -116.0
 offset_right = 140.0
-offset_bottom = 85.0
+offset_bottom = 116.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="VBox" type="VBoxContainer" parent="HUD/SettingsPopup" unique_id=653669866]
 layout_mode = 2
@@ -335,11 +344,15 @@ layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = -17.0
+offset_right = -17.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("8_ytb83")
 
 [node name="LeaderboardPanel" type="Control" parent="ResultLayer" unique_id=1243961412]
+layout_mode = 3
+anchors_preset = 0
 script = ExtResource("9_lboard")
 
 [node name="SiliContainer" type="Node2D" parent="." unique_id=327789985]

@@ -869,6 +869,13 @@ func _on_match_ended(sili_won: bool) -> void:
 ## (before anyone's burn timer actually expires) saw every Tubig scored as
 ## "survived" and zero eliminations credited - a full wipe that paid nothing.
 ##
+## Each caught Tubig also carries a "fraction" - how much of the match they
+## were free before that final catch (HeatStatus.survived_fraction()) - so
+## SeriesManager can scale their survival points by it: caught in the first
+## few seconds pays nothing, caught with the buzzer in sight pays almost the
+## full survival bonus, instead of every "out" flatly scoring zero regardless
+## of how long the chase actually lasted.
+##
 ## Rescues are not tallied here: SeriesManager already counted them one by one
 ## as they were validated, which is the only way to know who performed each.
 func _record_round_result(sili_won: bool) -> void:
@@ -892,7 +899,10 @@ func _record_round_result(sili_won: bool) -> void:
 			continue
 		var heat: HeatStatus = tubig.get_node_or_null("HeatStatus")
 		var caught: bool = heat != null and (heat.is_dead() or (sili_won and heat.is_incapacitated()))
-		outcomes[peer_id] = "out" if caught else "survived"
+		outcomes[peer_id] = {
+			"out": caught,
+			"fraction": heat.survived_fraction() if (caught and heat != null) else 1.0,
+		}
 
 	print("[SCORE-DEBUG] _record_round_result: sili_won=%s _tubig_players=%s sili_peer=%d outcomes=%s" % [
 		sili_won, _tubig_players, _sili_peer_id(), outcomes])

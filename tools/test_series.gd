@@ -30,17 +30,19 @@ func _initialize() -> void:
 	_check("starts on round 1", sm.round_number(), 1)
 	_check("series not complete at open", sm.series_complete(), false)
 
-	# --- Round 1: the Sili wipes all four. 4*2 + 3 = 11.
+	# --- Round 1: the Sili wipes all four, all caught instantly (fraction 0).
+	# 4*2 + 3 = 11 for the Sili; the wiped Tubig score nothing since none of
+	# them lasted any length of the match.
 	var sili_a: int = sm.current_sili()
 	var tubig_a := _others(players, sili_a)
 	var wipe := {}
 	for id in tubig_a:
-		wipe[id] = "out"
+		wipe[id] = {"out": true, "fraction": 0.0}
 	sm.record_round(sili_a, wipe)
 	_check("full wipe pays 11", sm.scores[sili_a]["points"], 11)
 	_check("wipe recorded", sm.scores[sili_a]["wipes"], 1)
 	_check("eliminations counted", sm.scores[sili_a]["eliminations"], 4)
-	_check("wiped Tubig score nothing", sm.scores[tubig_a[0]]["points"], 0)
+	_check("wiped Tubig caught instantly score nothing", sm.scores[tubig_a[0]]["points"], 0)
 	_check("advances to round 2", sm.round_number(), 2)
 
 	# --- Round 2: nobody caught, and one Tubig lands two rescues.
@@ -52,7 +54,7 @@ func _initialize() -> void:
 	sm.credit_rescue(rescuer)
 	var all_safe := {}
 	for id in tubig_b:
-		all_safe[id] = "survived"
+		all_safe[id] = {"out": false, "fraction": 1.0}
 	var before: int = sm.scores[rescuer]["points"]
 	sm.record_round(sili_b, all_safe)
 	_check("survive 3 + two rescues 2 = 5", sm.scores[rescuer]["points"] - before, 5)
@@ -65,7 +67,7 @@ func _initialize() -> void:
 	var tubig_c := _others(players, sili_c)
 	var out_all := {}
 	for id in tubig_c:
-		out_all[id] = "out"
+		out_all[id] = {"out": true, "fraction": 0.0}
 	sm.record_round(sili_c, out_all)
 	if rescuer != sili_c:
 		_check("rescue counter cleared between rounds", sm.scores[rescuer]["points"], carried)
@@ -75,7 +77,7 @@ func _initialize() -> void:
 		var s: int = sm.current_sili()
 		var o := {}
 		for id in _others(players, s):
-			o[id] = "survived"
+			o[id] = {"out": false, "fraction": 1.0}
 		sm.record_round(s, o)
 
 	_check("series completes after 5 rounds", sm.series_complete(), true)
@@ -85,6 +87,26 @@ func _initialize() -> void:
 	_check("standings lists every player", table.size(), 5)
 	_check("standings sorted high to low",
 		table[0]["points"] >= table[table.size() - 1]["points"], true)
+
+	# --- Fractional survival scoring: caught partway through the match pays
+	# partial credit, not a flat zero. A separate mini-series so it doesn't
+	# disturb the 5-round rotation invariants checked above.
+	var quick_players := {10: "Partial", 20: "Late"}
+	sm.begin_series(quick_players)
+	var quick_sili: int = sm.current_sili()
+	var quick_tubig: int = _others(quick_players, quick_sili)[0]
+
+	sm.record_round(quick_sili, {quick_tubig: {"out": true, "fraction": 0.5}})
+	_check("caught halfway through pays half the survival ceiling (2 of 3)",
+		sm.scores[quick_tubig]["points"], 2)
+	_check("a caught Tubig is not counted as a survival",
+		sm.scores[quick_tubig]["survivals"], 0)
+
+	sm.begin_series(quick_players)
+	quick_sili = sm.current_sili()
+	quick_tubig = _others(quick_players, quick_sili)[0]
+	sm.record_round(quick_sili, {quick_tubig: {"out": true, "fraction": 0.05}})
+	_check("caught almost instantly pays nothing", sm.scores[quick_tubig]["points"], 0)
 
 	print("")
 	if _failures == 0:

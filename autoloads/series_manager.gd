@@ -19,7 +19,16 @@ extends Node
 ## strength of one lucky draw.
 const POINTS_PER_ELIMINATION := 2  # Sili, per Tubig who ends the round out
 const POINTS_FULL_WIPE := 3        # Sili, for clearing every Tubig
-const POINTS_SURVIVED := 3         # Tubig, for not being out when time expires
+## Tubig ceiling, not a flat award any more - record_round scales this by
+## outcomes[peer_id]["fraction"] (arena.gd's HeatStatus.survived_fraction()),
+## how much of the match a Tubig was free before their final catch. Getting
+## tagged in the first few seconds pays nothing; lasting almost the whole
+## match before finally going down pays almost the full ceiling; making it to
+## the buzzer without ever being caught pays it in full. A flat "survived or
+## didn't" bonus rewarded surviving 179 seconds of a 180-second match exactly
+## the same as surviving 3 - which made getting caught early feel like it cost
+## nothing further to lose the rest of the match hiding.
+const POINTS_SURVIVED := 3
 const POINTS_PER_RESCUE := 1       # Tubig, per rescue channel completed
 
 signal standings_changed
@@ -119,7 +128,10 @@ func credit_rescue(peer_id: int) -> void:
 
 
 ## Host only, called once from the arena when the match ends.
-## `outcomes` is peer_id -> "survived" | "out", covering the Tubig only.
+## `outcomes` is peer_id -> {"out": bool, "fraction": float}, covering the
+## Tubig only. `fraction` is how much of the match that Tubig was free before
+## their final catch (1.0 if never caught) - see arena.gd's
+## _record_round_result and HeatStatus.survived_fraction().
 func record_round(sili_id: int, outcomes: Dictionary) -> void:
 	print("[SCORE-DEBUG] record_round called: is_active=%s sili_id=%d outcomes=%s scores_keys=%s" % [
 		is_active, sili_id, outcomes, scores.keys()])
@@ -129,7 +141,7 @@ func record_round(sili_id: int, outcomes: Dictionary) -> void:
 
 	var eliminated := 0
 	for peer_id in outcomes:
-		if outcomes[peer_id] == "out":
+		if outcomes[peer_id]["out"]:
 			eliminated += 1
 
 	var wipe: bool = eliminated > 0 and eliminated == outcomes.size()
@@ -156,9 +168,10 @@ func record_round(sili_id: int, outcomes: Dictionary) -> void:
 
 	# --- Tubig ---
 	for peer_id in outcomes:
-		var points := 0
-		if outcomes[peer_id] == "survived":
-			points += POINTS_SURVIVED
+		var out: bool = outcomes[peer_id]["out"]
+		var fraction: float = clampf(float(outcomes[peer_id].get("fraction", 1.0)), 0.0, 1.0)
+		var points := roundi(POINTS_SURVIVED * fraction)
+		if not out:
 			if scores.has(peer_id):
 				scores[peer_id]["survivals"] += 1
 		var rescues := int(_round_rescues.get(peer_id, 0))

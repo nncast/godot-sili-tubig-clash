@@ -11,10 +11,12 @@ extends Node
 ## the arena on the main thread with the results still frozen on screen. This
 ## asserts the curtain is up for the replay path.
 ##
-## FOUNTAIN TINT. The basin is tinted to show whether a drink is waiting. Spent
-## used to be a 0.55 grey multiply, and since every round starts spent and only
-## charges at the first speed stage (30s in), the fountain spent the opening of
-## every match looking like broken art. Spent must now be the sprite as drawn.
+## FOUNTAIN STATE. The fountain ships two whole art variants, "active"
+## (drinkable) and "inactive" (drained), as siblings under the fountain node -
+## exactly one is visible at a time, chosen by is_charged. The inactive variant
+## additionally carries a grey tint so a drained fountain still reads as
+## drained rather than merely as a second bowl design; the active variant is
+## shown exactly as authored, untinted.
 ##
 ## Run it as a SCENE, for the autoload reason spelled out in test_endgame.gd:
 ##
@@ -92,44 +94,55 @@ func _process(_delta: float) -> void:
 				_finish()
 				return
 			var fountain: Node = fountains[0]
-			var basin := fountain.get_node_or_null("bottom") as CanvasItem
+			var active: Node = fountain.get_node_or_null("active")
+			var inactive: Node = fountain.get_node_or_null("inactive")
+			_c("fountain has an active variant", active != null, true)
+			_c("fountain has an inactive variant", inactive != null, true)
+			if active == null or inactive == null:
+				_finish()
+				return
+
+			var inactive_basin := inactive.get_node_or_null("bottom") as CanvasItem
+			var active_basin := active.get_node_or_null("bottom") as CanvasItem
 
 			_c("fountain starts spent", fountain.is_charged, false)
-			_c("spent basin is not darkened", basin.modulate, Color(1, 1, 1, 1))
-			# The state worth noticing is the one that stands out, so ready has
-			# to be BRIGHTER than resting rather than resting being dimmer.
-			var ready_tint: Color = fountain.READY_TINT
+			_c("spent shows the inactive variant", inactive.visible, true)
+			_c("spent hides the active variant", active.visible, false)
 			var spent_tint: Color = fountain.SPENT_TINT
-			_c("ready reads brighter than spent",
-				ready_tint.g > spent_tint.g and ready_tint.b > spent_tint.b, true)
+			_c("inactive basin carries the spent tint",
+				Color(inactive_basin.modulate.r, inactive_basin.modulate.g, inactive_basin.modulate.b),
+				Color(spent_tint.r, spent_tint.g, spent_tint.b))
+			_c("active basin is untinted while hidden",
+				active_basin.modulate, Color(1, 1, 1, 1))
 
-			# The fountain's own canopy has to fade like any other prop.
-			var top := fountain.get_node_or_null("top") as TileMapLayer
-			_c("fountain has a canopy layer", top != null, true)
-			if top != null:
-				_c("fountain canopy carries the fade script", top.get_script() != null, true)
-				_c("fountain canopy is above the players", top.z_index, 21)
-				# Only the basin used to be tinted, so one prop rendered in two
-				# states: the bowl lit up for a ready drink while the top of the
-				# fountain stayed flat.
-				_c("both halves share a tint", top.modulate, basin.modulate)
+			# Both variants' own canopies have to fade like any other prop.
+			var inactive_top := inactive.get_node_or_null("top") as TileMapLayer
+			var active_top := active.get_node_or_null("top") as TileMapLayer
+			_c("inactive variant has a canopy layer", inactive_top != null, true)
+			_c("active variant has a canopy layer", active_top != null, true)
+			if inactive_top != null and active_top != null:
+				_c("inactive canopy carries the fade script", inactive_top.get_script() != null, true)
+				_c("active canopy carries the fade script", active_top.get_script() != null, true)
+				_c("inactive canopy is above the players", inactive_top.z_index, 21)
+				_c("active canopy is above the players", active_top.z_index, 21)
+				_c("inactive canopy shares the basin's tint",
+					Color(inactive_top.modulate.r, inactive_top.modulate.g, inactive_top.modulate.b),
+					Color(inactive_basin.modulate.r, inactive_basin.modulate.g, inactive_basin.modulate.b))
 
-				# And the tint must not touch alpha - canopy_fade owns that, and
-				# a full Color write here would snap a fading canopy back to
+				# The tint must not touch alpha - canopy_fade owns that, and a
+				# full Color write here would snap a fading canopy back to
 				# opaque every time the fountain changed state.
-				top.modulate.a = 0.3
-				fountain._apply_tint()
+				inactive_top.modulate.a = 0.3
+				fountain._apply_visual_state()
 				# is_equal_approx, not ==: Color stores 32-bit floats, so 0.3
 				# does not survive the round trip exactly.
 				_c("tinting leaves the fade alpha alone",
-					is_equal_approx(top.modulate.a, 0.3), true)
+					is_equal_approx(inactive_top.modulate.a, 0.3), true)
 				fountain.is_charged = true
-				_c("charging still leaves it alone",
-					is_equal_approx(top.modulate.a, 0.3), true)
-				_c("charging brightens the canopy too",
-					top.modulate.r > spent_tint.r or top.modulate.g > spent_tint.g, true)
+				_c("charging swaps to the active variant", active.visible, true)
+				_c("charging hides the inactive variant", inactive.visible, false)
 				fountain.is_charged = false
-				top.modulate.a = 1.0
+				inactive_top.modulate.a = 1.0
 
 			_phase = 1
 			return

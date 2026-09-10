@@ -67,17 +67,23 @@ enum FadeMode {
 ## Alpha while you are underneath. Not 0 - a faint canopy reads as "you are
 ## under something", where clearing it fully just looks like the art vanished.
 ##
-## Lowered from 0.3 to 0.15 and now to 0.10: the fronds kept enough weight at
-## 0.15 to swallow a 24px character standing under them, which defeats the
-## point of fading at all. 0.10 leaves the tree's silhouette legible - you can
-## still tell you are under cover - while letting you actually read yourself
-## and anyone beside you.
+## This has been tuned in both directions. It came down 0.3 -> 0.15 -> 0.10
+## chasing readability, but 0.10 overshot: the fronds thinned out so far that
+## the canopy read as missing art rather than as cover, and the map lost the
+## layer players are supposed to be hiding UNDER. 0.6 is the way back - the palm
+## keeps its shape and colour, and a 24px character underneath still reads
+## clearly against it because the sprite is solid and the fronds are not.
+##
+## If it needs another pass, drag it rather than editing this: the setter below
+## pushes straight to the shader, so the value can be tuned live while the scene
+## runs. Roughly 0.5 is as low as it goes before the art starts looking absent
+## again, and past about 0.8 the character underneath gets hard to pick out.
 ##
 ## Written through a setter rather than only in _ready() so dragging this in
 ## the inspector updates the shader on the spot - the previous version pushed
 ## the value once at startup, so tuning it meant restarting the scene every
 ## time.
-@export var faded_alpha: float = 0.10:
+@export var faded_alpha: float = 0.6:
 	set(value):
 		faded_alpha = clampf(value, 0.0, 1.0)
 		if _material != null:

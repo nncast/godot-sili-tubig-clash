@@ -12,9 +12,14 @@ func _initialize() -> void:
 		"res://game/arena/actors/tubig/tubig.tscn",
 		"res://game/arena/actors/sili/sili.tscn",
 		"res://game/arena/arena.tscn",
-		"res://maps/boracay_shore/boracay_shore.tscn",
-		"res://maps/boracay/boracay.tscn",
 	]
+	# Maps come from the registry rather than a hand-kept list. This used to name
+	# maps/boracay_shore, which was replaced long enough ago that the entry was
+	# only ever printing a load failure nobody read - reading MAPS means adding
+	# or renaming a map can never leave a stale path here again.
+	for map_id in MapRegistry.ids():
+		scenes.append(MapRegistry.scene_path(map_id))
+
 	for path in scenes:
 		var packed = load(path)
 		if packed == null:

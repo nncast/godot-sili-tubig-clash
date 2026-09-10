@@ -74,8 +74,19 @@ func _process(_d: float) -> bool:
 			var path := String(m.get_path_to(layer))
 			_c("%s: %s has canopy script" % [id, path], layer.get_script() != null, true)
 			_c("%s: %s z_index 21" % [id, path], layer.z_index, 21)
-			_c("%s: %s has shader material" % [id, path],
-				layer.material is ShaderMaterial, true)
+			# A material is required only where the fade is drawn by the shader.
+			# WHOLE mode fades the layer through modulate.a and builds no material
+			# at all on purpose (see canopy_fade.gd's _ensure_material), and WHOLE
+			# is what every prop in the game uses - so demanding a ShaderMaterial
+			# unconditionally, as this did, failed every correctly-wired canopy on
+			# the map. What actually matters is that a layer which NEEDS a shader
+			# has one.
+			if layer.fade_mode == CanopyFade.FadeMode.WHOLE:
+				_c("%s: %s fades whole, needs no material" % [id, path],
+					layer.material == null, true)
+			else:
+				_c("%s: %s has shader material" % [id, path],
+					layer.material is ShaderMaterial, true)
 		m.queue_free()
 
 	# ---- arena assembly ----

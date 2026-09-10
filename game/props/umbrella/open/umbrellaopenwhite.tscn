@@ -2395,6 +2395,7 @@ tile_map_data = PackedByteArray("AAAAAAAAAAAaABAAAAA=")
 tile_set = SubResource("TileSet_3sajy")
 
 [node name="top" type="TileMapLayer" parent="." unique_id=1441198642]
+z_index = 21
 tile_map_data = PackedByteArray("AAAAAAAAAAAaABAAAAD///3/AAAZABEAAAD///7/AAAZABIAAAD/////AAAZABMAAAAAAP3/AAAaABEAAAAAAP7/AAAaABIAAAAAAP//AAAaABMAAAABAP3/AAAbABEAAAABAP7/AAAbABIAAAABAP//AAAbABMAAAA=")
 tile_set = SubResource("TileSet_3sajy")
 script = ExtResource("2_canopy")

@@ -102,7 +102,13 @@ func _process(_delta: float) -> void:
 				return
 
 			_c("canopy is above the players", _canopy.z_index, 21)
-			_c("faded alpha is the lowered value", _canopy.faded_alpha < 0.3, true)
+			# The INVARIANT, not the tuning. This used to assert < 0.3, which
+			# pinned one particular pass at the value (0.10) and turned a later
+			# art-driven retune into a test failure. What actually has to hold is
+			# that the canopy genuinely fades and never fully disappears - see the
+			# note on faded_alpha; 0 reads as missing art rather than as cover.
+			_c("canopy fades when stood under", _canopy.faded_alpha < 1.0, true)
+			_c("canopy never clears completely", _canopy.faded_alpha > 0.0, true)
 			# WHOLE needs no ShaderMaterial, and building one anyway would mean
 			# forty-odd compiled materials on boracay doing nothing.
 			_c("prop canopy uses WHOLE", _canopy.fade_mode, 0)

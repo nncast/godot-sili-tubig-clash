@@ -45,7 +45,15 @@ extends Node
 
 signal changed
 
-const SAVE_PATH := "user://leaderboard.json"
+## A var rather than a const so a test can point the board at a scratch file.
+##
+## user:// resolves to the same folder for the editor and for the exported game,
+## so the test suite and the installed game share one leaderboard.json. reset()
+## writes an empty board to disk, and tools/test_leaderboard_and_audio.gd calls
+## reset() twice - which quietly destroyed the player's real career records on
+## every run of the suite until this was overridable. Nothing but a test should
+## ever assign this.
+var save_path := "user://leaderboard.json"
 
 ## Rounds before a player is placed on the board.
 ##
@@ -234,10 +242,10 @@ func _key(display_name: String) -> String:
 # --- Persistence -----------------------------------------------------------
 
 func _save() -> void:
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file := FileAccess.open(save_path, FileAccess.WRITE)
 	if file == null:
 		push_warning("Leaderboard: could not write '%s' (error %d)." % [
-			SAVE_PATH, FileAccess.get_open_error()])
+			save_path, FileAccess.get_open_error()])
 		return
 	file.store_string(JSON.stringify({
 		"version": 1,
@@ -251,18 +259,18 @@ func _save() -> void:
 ## failure here ends in an empty board rather than an exception. Losing a
 ## scoreboard is a nuisance; refusing to start is not survivable.
 func _load() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(save_path):
 		return
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var file := FileAccess.open(save_path, FileAccess.READ)
 	if file == null:
-		push_warning("Leaderboard: could not read '%s'." % SAVE_PATH)
+		push_warning("Leaderboard: could not read '%s'." % save_path)
 		return
 	var raw := file.get_as_text()
 	file.close()
 
 	var parsed = JSON.parse_string(raw)
 	if typeof(parsed) != TYPE_DICTIONARY:
-		push_warning("Leaderboard: '%s' is not valid JSON; starting empty." % SAVE_PATH)
+		push_warning("Leaderboard: '%s' is not valid JSON; starting empty." % save_path)
 		return
 
 	var records = parsed.get("records", {})

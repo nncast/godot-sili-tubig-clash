@@ -18,6 +18,9 @@ var _settle := 0
 ## would keep resetting the settle countdown that waits for the spawn.
 var _peers_reported := false
 
+## Where this test is allowed to write. Anything but the real leaderboard.
+const SCRATCH_SAVE_PATH := "user://leaderboard_test_scratch.json"
+
 
 func _c(label: String, actual: Variant, expected: Variant) -> void:
 	if actual == expected:
@@ -57,8 +60,15 @@ func _ready() -> void:
 # --- Leaderboard -----------------------------------------------------------
 
 func _run_leaderboard() -> void:
+	# BEFORE the first reset(), which writes an empty board to disk. user://
+	# resolves to the same folder for the editor and for the installed game, so
+	# without this the suite wipes the player's real career records every time it
+	# runs - which it silently did until this line existed.
+	Leaderboard.save_path = SCRATCH_SAVE_PATH
 	Leaderboard.reset()
 	_c("starts empty", Leaderboard.is_empty(), true)
+	_c("the real save file is not the one under test",
+		Leaderboard.save_path == "user://leaderboard.json", false)
 
 	# Two five-round series. Ana wins the first outright; Ben plays only the
 	# second, so he ends on fewer rounds than the placement floor.
@@ -135,6 +145,11 @@ func _run_leaderboard() -> void:
 
 	# --- Persistence ---
 	var reloaded: Node = load("res://autoloads/leaderboard.gd").new()
+	# A fresh instance carries its own save_path, defaulted to the REAL board -
+	# and it both reads and (via bank_series below) writes. Pointed at the
+	# scratch file BEFORE add_child, because _ready() loads on the way in and
+	# there is no second chance after that.
+	reloaded.save_path = SCRATCH_SAVE_PATH
 	add_child(reloaded)  # _ready() loads from disk
 	_c("records survive a reload",
 		int(reloaded.record_for("Ana").get("points", 0)), 30)
@@ -274,6 +289,7 @@ func _find_spectator() -> Node:
 
 
 func _finish() -> void:
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(SCRATCH_SAVE_PATH))
 	print("")
 	print("ALL TESTS PASSED" if _f == 0 else "%d TEST(S) FAILED" % _f)
 	get_tree().quit(1 if _f > 0 else 0)

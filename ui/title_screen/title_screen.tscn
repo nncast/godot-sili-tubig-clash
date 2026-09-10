@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://hyep0gpoy4np" path="res://ui/title_screen/title_screen.gd" id="1_title"]
 [ext_resource type="Texture2D" uid="uid://dmmrbwfg7avcv" path="res://game/assets/art/ui/title.png" id="2_72buf"]
 [ext_resource type="FontFile" uid="uid://dt8i0axtwshee" path="res://game/assets/fonts/BoldPixels.ttf" id="2_ffat2"]
+[ext_resource type="Script" uid="uid://cp1gk53ttm381" path="res://ui/leaderboard/leaderboard_panel.gd" id="3_lboard"]
 [ext_resource type="Texture2D" uid="uid://cv6k40ouuig57" path="res://game/assets/art/ui/Hud_Menu/background/background.png" id="4_rhiq2"]
 [ext_resource type="Texture2D" uid="uid://bi6j41yi8p7hi" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm3.png" id="5_ca08b"]
 [ext_resource type="Texture2D" uid="uid://ctqe00v7026s" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm5.png" id="6_lgnx5"]
 [ext_resource type="Texture2D" uid="uid://bdc1ex5p0hmfs" path="res://game/assets/art/ui/Hud_Menu/background/vegetation_tree_palm6.png" id="7_1djn3"]
-[ext_resource type="Script" uid="uid://cp1gk53ttm381" path="res://ui/leaderboard/leaderboard_panel.gd" id="3_lboard"]
 
 [node name="TitleScreen" type="Control" unique_id=1703636514]
 layout_mode = 3
@@ -162,7 +162,6 @@ autowrap_mode = 2
 
 [node name="LeaderboardButton" type="Button" parent="." unique_id=1900500001]
 layout_mode = 1
-anchors_preset = 0
 offset_left = 16.0
 offset_top = 16.0
 offset_right = 156.0
@@ -174,10 +173,10 @@ text = "Leaderboard"
 flat = true
 
 [node name="LeaderboardPanel" type="Control" parent="." unique_id=1900500002]
+anchors_preset = 0
 script = ExtResource("3_lboard")
 
 [node name="JoinPanel" type="Control" parent="." unique_id=1759550424]
-visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -202,9 +201,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -190.0
-offset_top = -165.0
+offset_top = -108.5
 offset_right = 190.0
-offset_bottom = 165.0
+offset_bottom = 108.5
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -231,12 +230,11 @@ visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
-horizontal_alignment = 0
 
 [node name="OrLabel" type="Label" parent="JoinPanel/Panel/Margin/VBox" unique_id=1898757290]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.62, 0.6, 0.58, 1)
+theme_override_font_sizes/font_size = 14
 text = "or"
 horizontal_alignment = 1
 
